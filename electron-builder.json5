@@ -10,16 +10,10 @@
         "output": "dist-release",
         "buildResources": "electron/resources/build"
     },
-    "afterPack": "./scripts/build_optimize.cjs",
+    "afterPack": "./scripts/build-optimize.cjs",
     "files": [
         "dist",
         "dist-electron"
-    ],
-    "extraResources": [
-        {
-            "from": "node_modules/ffmpeg-static",
-            "to": "bin/ffmpeg",
-        }
     ],
     "win": {
         icon: "electron/resources/build/logo.ico",
@@ -38,8 +32,8 @@
                 "from": "electron/resources/extra",
                 "to": "extra",
                 "filter": [
-                    "common",
-                    "win"
+                    "common/**",
+                    "win-*/**"
                 ]
             }
         ]
@@ -65,7 +59,8 @@
             "zh-CN",
             "en-US",
             "zh-TW"
-        ]
+        ],
+        "artifactName": "${productName}-${version}-win-appx-${arch}.${ext}",
     },
     "mac": {
         "icon": "logo.icns",
@@ -75,7 +70,7 @@
                 "arch": [
                     "x64",
                     "arm64"
-                ]
+                ],
             }
         ],
         "artifactName": "${productName}-${version}-mac-${arch}.${ext}",
@@ -84,8 +79,9 @@
                 "from": "electron/resources/extra",
                 "to": "extra",
                 "filter": [
-                    "common",
-                    "mac"
+                    "common/**",
+                    "osx/**",
+                    "osx-*/**"
                 ]
             }
         ],
@@ -93,18 +89,16 @@
         "entitlementsInherit": "./entitlements.mac.plist",
         "entitlements": "./entitlements.mac.plist",
         "extendInfo": {
-            "NSDocumentsFolderUsageDescription": "Application requests access to the user's Documents folder.",
-            "NSDownloadsFolderUsageDescription": "Application requests access to the user's Downloads folder."
+            "NSDocumentsFolderUsageDescription": "Application requests access to the user's Documents folder."
         },
         "type": "development",
         "notarize": false,
         "darkModeSupport": true,
         "hardenedRuntime": true,
-        "identity": "Xi'an Yanyi Information Technology Co., Ltd (Q96H3H33RK)"
+        "identity": null
     },
     "linux": {
         "icon": "logo.icns",
-        "desktop": "logo",
         "maintainer": "LinkAndroid",
         "category": "Utility",
         "target": [
@@ -129,8 +123,8 @@
                 "from": "electron/resources/extra",
                 "to": "extra",
                 "filter": [
-                    "common",
-                    "linux"
+                    "common/**",
+                    "linux-*/**"
                 ]
             }
         ]

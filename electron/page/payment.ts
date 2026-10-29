@@ -1,12 +1,12 @@
-import {BrowserWindow, ipcMain} from "electron";
-import {preloadDefault, rendererLoadPath} from "../lib/env-main";
-import {Page} from "./index";
-import {AppConfig} from "../../src/config";
-import {icnsLogoPath, icoLogoPath, logoPath} from "../config/icon";
-import {isPackaged} from "../lib/env";
-import {WindowConfig} from "../config/window";
-import * as remoteMain from "@electron/remote/main";
-import {DevToolsManager} from "../lib/devtools";
+import {BrowserWindow, ipcMain} from 'electron'
+import {preloadDefault, rendererLoadPath} from '../lib/env-main'
+import {Page} from './index'
+import {AppConfig} from '../../src/config'
+import {icnsLogoPath, icoLogoPath, logoPath} from '../config/icon'
+import {isPackaged} from '../lib/env'
+import {WindowConfig} from '../config/window'
+import * as remoteMain from '@electron/remote/main'
+import {DevToolsManager} from '../lib/devtools'
 
 export const PagePayment = {
     NAME: 'payment',
@@ -17,18 +17,18 @@ export const PagePayment = {
     },
     open: async (option: {
         onRefresh: () => Promise<{
-            payUrl: string,
-            watchUrl: string,
-            payExpireSeconds: number,
-            body: string,
-        }>,
+            payUrl: string
+            watchUrl: string
+            payExpireSeconds: number
+            body: string
+        }>
         onWatch: () => Promise<{
-            status: 'WaitPay' | 'Scanned' | 'Payed' | 'Expired' | 'Error',
-        }>,
-        onClose: () => void,
-        parent?: BrowserWindow,
+            status: 'WaitPay' | 'Scanned' | 'Payed' | 'Expired' | 'Error'
+        }>
+        onClose: () => void
+        parent?: BrowserWindow
     }): Promise<{
-        close: () => void,
+        close: () => void
     }> => {
         PagePayment.event.onRefresh = option.onRefresh
         PagePayment.event.onWatch = option.onWatch
@@ -43,9 +43,11 @@ export const PagePayment = {
         let alwaysOnTop = !parent
         const win = new BrowserWindow({
             show: true,
-            title: AppConfig.name,
+            title: AppConfig.title,
             ...(!isPackaged ? {icon} : {}),
             frame: false,
+            titleBarStyle: 'hidden',
+            trafficLightPosition: {x: 10, y: 11},
             transparent: false,
             hasShadow: true,
             center: true,
@@ -79,7 +81,7 @@ export const PagePayment = {
             PagePayment.event.onClose()
         })
 
-        rendererLoadPath(win, 'page/payment.html');
+        rendererLoadPath(win, 'page/payment.html')
 
         remoteMain.enable(win.webContents)
 
@@ -98,9 +100,9 @@ export const PagePayment = {
         return {
             close: () => {
                 win.close()
-            }
+            },
         }
-    }
+    },
 }
 
 ipcMain.handle('Payment.Event', async (event, type: 'refresh' | 'watch', param: any) => {
@@ -111,4 +113,3 @@ ipcMain.handle('Payment.Event', async (event, type: 'refresh' | 'watch', param: 
             return await PagePayment.event.onWatch()
     }
 })
-

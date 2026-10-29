@@ -1,25 +1,30 @@
-import {app, BrowserWindow, desktopCapturer, session, shell} from 'electron'
 import {optimizer} from '@electron-toolkit/utils'
+import {app, BrowserWindow, desktopCapturer, session, shell} from 'electron'
+import fs from 'node:fs'
+import path from 'node:path'
 
 /** process.js 必须位于非依赖项的顶部 */
-import {isDummy} from "../lib/process";
-import {AppEnv, AppRuntime} from "../mapi/env";
-import {MAPI} from '../mapi/main';
+import {isDummy} from '../lib/process'
+import {defaultDataRoot, ensureClientConfig, isDefaultDataRoot} from '../lib/client-config'
+import {AppEnv, AppRuntime} from '../mapi/env'
+import {MAPI} from '../mapi/main'
 
-import {WindowConfig} from "../config/window";
-import {AppConfig} from "../../src/config";
-import Log from "../mapi/log/main";
-import {ConfigMenu} from "../config/menu";
-import {ConfigLang} from "../config/lang";
-import {ConfigContextMenu} from "../config/contextMenu";
-import {preloadDefault, rendererLoadPath} from "../lib/env-main";
-import {Page} from "../page";
-import {ConfigTray} from "../config/tray";
-import {icnsLogoPath, icoLogoPath, logoPath} from "../config/icon";
-import {isMac, isPackaged} from "../lib/env";
-import {executeHooks} from "../lib/hooks";
-import {DevToolsManager} from "../lib/devtools";
-import {AppsMain} from "../mapi/app/main";
+import {AppConfig} from '../../src/config'
+import {ConfigContextMenu} from '../config/contextMenu'
+import {icnsLogoPath, icoLogoPath, logoPath} from '../config/icon'
+import {ConfigLang} from '../config/lang'
+import {ConfigMenu} from '../config/menu'
+import {ConfigTray} from '../config/tray'
+import {WindowConfig} from '../config/window'
+import {Diagnostics} from '../lib/diagnostics'
+import {DevToolsManager} from '../lib/devtools'
+import {isMac, isPackaged} from '../lib/env'
+import {preloadDefault, rendererDistPath, rendererLoadPath} from '../lib/env-main'
+import {executeHooks} from '../lib/hooks'
+import {AppsMain} from '../mapi/app/main'
+import {reportError} from '../mapi/log/beacon'
+import Log from '../mapi/log/main'
+import {Page} from '../page'
 
 const isDummyNew = isDummy
 
@@ -30,25 +35,27 @@ if (process.env['ELECTRON_ENV_PROD']) {
 process.on('uncaughtException', (reason) => {
     let error: any = reason
     if (error instanceof Error) {
-        error = [
-            error.message,
-            error.stack,
-        ].join("\n")
+        error = [error.message, error.stack].join('\n')
     }
-    Log.error('UncaughtException', error);
-});
+    Log.error('UncaughtException', error)
+    reportError(
+        reason instanceof Error ? reason.message : String(reason),
+        reason instanceof Error ? reason.stack : undefined,
+    )
+})
 
 process.on('unhandledRejection', (reason) => {
-    Log.error('UnhandledRejection', reason);
+    Log.error('UnhandledRejection', reason)
     let error: any = reason
     if (error instanceof Error) {
-        error = [
-            error.message,
-            error.stack,
-        ].join("\n")
+        error = [error.message, error.stack].join('\n')
     }
-    Log.error('UnhandledRejection', error);
-});
+    Log.error('UnhandledRejection', error)
+    reportError(
+        reason instanceof Error ? (reason as Error).message : String(reason),
+        reason instanceof Error ? (reason as Error).stack : undefined,
+    )
+})
 
 app.disableHardwareAcceleration()
 
@@ -58,24 +65,69 @@ if (process.platform === 'win32') app.setAppUserModelId(app.getName())
 if (!app.requestSingleInstanceLock()) {
     // 如何激活已经启动的实例？
     // https://www.electronjs.org/docs/api/app#apprequestsingleinstancelock
-    app.quit()
-    process.exit(0)
+    // 测试模式（--remote-debugging-port=53071）下跳过单实例检查
+    if (
+        !process.argv.includes('--remote-debugging-port=53071') &&
+        !process.argv.some((a) => a.startsWith('--remote-debugging-port='))
+    ) {
+        app.quit()
+        process.exit(0)
+    }
 }
 
 const hasSplashWindow = true
 
+// 读取构建信息（build.json 中的 buildId：构建时的北京时间 YYYYMMDDHHMMSS，
+// 用于日志中确认运行的版本是否包含最新修复）
+const readBuildId = (): string => {
+    try {
+        const json = fs.readFileSync(rendererDistPath('build.json'), 'utf8')
+        return JSON.parse(json).buildId || 'unknown'
+    } catch (e) {
+        return 'Development'
+    }
+}
+
 AppEnv.appRoot = process.env.APP_ROOT
+
+// userData / appData 保持 Electron 系统默认位置（框架数据，如缓存、session 等）
 AppEnv.appData = app.getPath('appData')
 AppEnv.userData = app.getPath('userData')
+
+// 数据根目录：~/.linkandroid/client.json → dataRoot（默认 ~/.linkandroid/data）
+// 应用数据（日志、配置、storage、数据库、cli-auth.json 等）统一存储在该目录
+const clientConfig = ensureClientConfig()
+AppEnv.dataRoot = clientConfig.dataRoot
+AppEnv.dataRootDefault = defaultDataRoot()
+AppEnv.dataRootIsDefault = isDefaultDataRoot(AppEnv.dataRoot)
+
+if (!fs.existsSync(AppEnv.dataRoot)) {
+    fs.mkdirSync(AppEnv.dataRoot, {recursive: true})
+}
+for (const dir of ['db', 'logs', 'storage']) {
+    if (!fs.existsSync(path.join(AppEnv.dataRoot, dir))) {
+        fs.mkdirSync(path.join(AppEnv.dataRoot, dir), {recursive: true})
+    }
+}
+
 AppEnv.isInit = true
 
 MAPI.init()
 ConfigContextMenu.init()
 
+// Runtime diagnostics: renderer crashes, unresponsive windows, load failures,
+// child (GPU/utility) process crashes and periodic memory snapshots, all
+// written to the standard log file for post-mortem analysis. Must be
+// registered before any window is created.
+Diagnostics.register()
+
 Log.info('Starting')
 Log.info('LaunchInfo', {
     isPackaged,
+    version: AppConfig.version,
+    buildId: readBuildId(),
     userData: AppEnv.userData,
+    dataRoot: AppEnv.dataRoot,
 })
 
 async function createWindow() {
@@ -87,10 +139,10 @@ async function createWindow() {
     }
     if (hasSplashWindow) {
         AppRuntime.splashWindow = new BrowserWindow({
-            title: AppConfig.name,
+            title: AppConfig.title,
             width: 600,
             height: 350,
-            transparent: true,
+            transparent: false,
             frame: false,
             alwaysOnTop: true,
             hasShadow: true,
@@ -99,8 +151,8 @@ async function createWindow() {
         rendererLoadPath(AppRuntime.splashWindow, 'splash.html')
     }
     AppRuntime.mainWindow = new BrowserWindow({
-        show: !hasSplashWindow,
-        title: AppConfig.name,
+        show: true,
+        title: AppConfig.title,
         ...(!isPackaged ? {icon} : {}),
         frame: false,
         transparent: false,
@@ -119,6 +171,7 @@ async function createWindow() {
             nodeIntegration: true,
             webSecurity: false,
             webviewTag: true,
+            backgroundThrottling: false,
             // Consider using contextBridge.exposeInMainWorld
             // Read more on https://www.electronjs.org/docs/latest/tutorial/context-isolation
             contextIsolation: false,
@@ -131,17 +184,17 @@ async function createWindow() {
     })
     AppRuntime.mainWindow.on('show', async () => {
         await executeHooks(AppRuntime.mainWindow, 'Show')
-    });
+    })
     AppRuntime.mainWindow.on('hide', async () => {
         await executeHooks(AppRuntime.mainWindow, 'Hide')
-    });
+    })
 
     if (isMac) {
         AppRuntime.mainWindow.on('close', (event) => {
             // @ts-ignore
             if (!app.quitForce) {
                 executeHooks(AppRuntime.mainWindow, 'ShowQuitConfirmDialog')
-                event.preventDefault();
+                event.preventDefault()
             }
         })
     }
@@ -157,17 +210,21 @@ async function createWindow() {
 
     AppRuntime.mainWindow.webContents.on('did-finish-load', () => {
         if (hasSplashWindow) {
-            AppRuntime.mainWindow?.show()
             setTimeout(() => {
                 try {
                     AppRuntime.splashWindow?.close()
                     AppRuntime.splashWindow = null
-                } catch (e) {
-                }
-            }, 1000);
+                } catch (e) {}
+            }, 1000)
         }
         Page.ready('main')
         DevToolsManager.autoShow(AppRuntime.mainWindow)
+        if (isMac) {
+            app.dock.show()
+            app.focus({steal: true})
+        }
+        AppRuntime.mainWindow.show()
+        AppRuntime.mainWindow.focus()
     })
     AppRuntime.mainWindow.webContents.setWindowOpenHandler(({url}) => {
         if (url.startsWith('https:')) shell.openExternal(url)
@@ -197,7 +254,7 @@ app.whenReady()
 
 app.on('will-quit', () => {
     MAPI.destroy()
-});
+})
 
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit()
@@ -224,5 +281,3 @@ app.on('activate', () => {
         createWindow().then()
     }
 })
-
-

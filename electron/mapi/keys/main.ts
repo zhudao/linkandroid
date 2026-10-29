@@ -1,5 +1,5 @@
-import {app, BrowserWindow, globalShortcut} from "electron";
-import {AppsMain} from "../app/main";
+import {app, BrowserWindow, globalShortcut} from 'electron'
+import {AppsMain} from '../app/main'
 
 const eventListeners = {}
 
@@ -8,9 +8,12 @@ let continuousKeys = []
 const addKeyInput = (key: string, expire = 1000) => {
     let now = Date.now()
     continuousKeys.push({key, expire: now + expire})
-    continuousKeys = continuousKeys.filter(item => item.expire > now)
+    continuousKeys = continuousKeys.filter((item) => item.expire > now)
     for (let i = continuousKeys.length - 1; i >= 0; i--) {
-        const key = continuousKeys.filter((o, oIndex) => oIndex >= i).map(o => o.key).join('|')
+        const key = continuousKeys
+            .filter((o, oIndex) => oIndex >= i)
+            .map((o) => o.key)
+            .join('|')
         if (eventListeners[key]) {
             eventListeners[key]()
             break
@@ -41,18 +44,17 @@ const ready = () => {
 }
 
 const destroy = () => {
-    globalShortcut.unregisterAll();
+    globalShortcut.unregisterAll()
 }
 
 const register = () => {
-
-    globalShortcut.unregisterAll();
+    globalShortcut.unregisterAll()
 
     app.on('browser-window-focus', () => {
         for (let key in keyMap) {
             globalShortcut.register(key, keyMap[key])
         }
-    });
+    })
 
     app.on('browser-window-blur', () => {
         for (let key in keyMap) {
@@ -60,30 +62,27 @@ const register = () => {
         }
     })
 
-    addMultiKeyListener([
-        'CommandOrControl+Shift+H', 'CommandOrControl+Shift+H', 'CommandOrControl+Shift+H'
-    ], () => {
-        let focusedWindow = BrowserWindow.getFocusedWindow();
+    addMultiKeyListener(['CommandOrControl+Shift+H', 'CommandOrControl+Shift+H', 'CommandOrControl+Shift+H'], () => {
+        let focusedWindow = BrowserWindow.getFocusedWindow()
         if (focusedWindow) {
             if (focusedWindow.webContents.isDevToolsOpened()) {
-                focusedWindow.webContents.closeDevTools();
+                focusedWindow.webContents.closeDevTools()
             } else {
                 focusedWindow.webContents.openDevTools({
                     mode: 'detach',
                     activate: true,
                     title: 'FocusedWindow',
-                });
+                })
             }
         }
-    });
+    })
 }
 
 export const KeysMain = {
-    register
+    register,
 }
 
 export default {
     ready,
     destroy,
 }
-

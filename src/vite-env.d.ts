@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
-import {Dialog} from "./lib/dialog";
+import type {Dialog} from './lib/dialog'
+import type {Router} from 'vue-router'
 
 declare module '*.vue' {
     import type {DefineComponent} from 'vue'
@@ -7,10 +8,15 @@ declare module '*.vue' {
     export default component
 }
 
+declare module '*?raw' {
+    const content: string
+    export default content
+}
+
 declare module '@vue/runtime-core' {
     interface ComponentCustomProperties {
-        $mapi: typeof window.$mapi,
-        $dialog: typeof Dialog,
+        $router: Router
+        $dialog: Dialog
         $t: typeof import('vue-i18n').GlobalTranslate
     }
 }

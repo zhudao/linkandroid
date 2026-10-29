@@ -1,5 +1,4 @@
 <script setup lang="ts">
-
 const props = defineProps({
     accept: {
         type: String,
@@ -18,16 +17,11 @@ const onWebSelectFile = async (fileList, fileItem) => {
 </script>
 
 <template>
-    <a-upload :auto-upload="false"
-              :show-file-list="false"
-              :accept="accept"
-              @change="onWebSelectFile">
+    <a-upload :auto-upload="false" :show-file-list="false" :accept="accept" @change="onWebSelectFile">
         <template #upload-button>
             <slot></slot>
         </template>
     </a-upload>
 </template>
 
-<style scoped>
-
-</style>
+<style scoped></style>

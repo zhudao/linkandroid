@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {AppConfig} from "../../config";
+import {AppConfig} from '../../config'
 
 const doShow = () => {
     window.$mapi.app.windowOpen('feedback')
@@ -7,12 +7,10 @@ const doShow = () => {
 </script>
 
 <template>
-    <a-button v-if="!!AppConfig.feedbackUrl"
-              size="mini"
-              @click="doShow">
+    <a-button v-if="!!AppConfig.feedbackUrl" size="mini" @click="doShow">
         <template #icon>
-            <icon-customer-service/>
+            <icon-customer-service />
         </template>
-        {{ $t('工单反馈') }}
+        {{ $t('nav.feedback') }}
     </a-button>
 </template>

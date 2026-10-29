@@ -1,4 +1,4 @@
-import PinyinMatch from 'pinyin-match';
+import PinyinMatch from 'pinyin-match'
 
 export const PinyinUtil = {
     match(input, keywords) {
@@ -8,16 +8,21 @@ export const PinyinUtil = {
         if (index) {
             const indexStart = index[0]
             const indexEnd = index[1]
-            inputMark = input.substring(0, indexStart) + '<mark>' + input.substring(indexStart, indexEnd + 1) + '</mark>' + input.substring(indexEnd + 1)
+            inputMark =
+                input.substring(0, indexStart) +
+                '<mark>' +
+                input.substring(indexStart, indexEnd + 1) +
+                '</mark>' +
+                input.substring(indexEnd + 1)
             similarity = (indexEnd - indexStart + 1) / input.length
         }
         return {
             matched: !!index,
             inputMark,
-            similarity
+            similarity,
         }
     },
     mark(text) {
         return `<mark>${text}</mark>`
-    }
+    },
 }

@@ -1,7 +1,6 @@
 import updaterIndex from './index'
-import {ipcMain} from "electron";
-import ConfigMain from "../config/main";
-
+import {ipcMain} from 'electron'
+import ConfigMain from '../config/main'
 
 ipcMain.handle('updater:getCheckAtLaunch', async (event) => {
     return ConfigMain.get('updaterCheckAtLaunch', 'yes')

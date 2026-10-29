@@ -1,0 +1,423 @@
+/**
+ * Task Scheduler — 主进程定时任务调度器
+ *
+ * 每 30 秒检查一次数据库中的定时任务（run_mode = 'scheduled'），
+ * 使用 croner 判断当前时间是否匹配 cron 表达式，匹配则执行任务。
+ */
+
+import adbkitPkg from '@devicefarmer/adbkit'
+import {Cron} from 'croner'
+import path from 'node:path'
+import {fileURLToPath} from 'node:url'
+import {Log} from '../log/index'
+import Apps from '../app/index'
+import DBMain from '../db/main'
+import {isPackaged, resolveAdbBin} from '../../lib/env'
+
+const {Adb} = adbkitPkg as any
+
+const _dirname = path.dirname(fileURLToPath(import.meta.url))
+
+interface TaskRow {
+    id: number
+    name: string
+    description: string
+    code: string
+    language: string
+    run_mode: string
+    cron_expression: string
+    device_ids: string
+    run_on_all_devices: number
+}
+
+const CHECK_INTERVAL_MS = 30_000
+
+// 记录每个定时任务最后触发的分钟标识 "YYYY-MM-DD HH:mm"
+const lastTriggeredMinute = new Map<number, string>()
+
+let intervalHandle: ReturnType<typeof setInterval> | null = null
+
+/**
+ * 获取当前分钟标识
+ */
+const currentMinuteKey = (date: Date = new Date()): string => {
+    const y = date.getFullYear()
+    const m = String(date.getMonth() + 1).padStart(2, '0')
+    const d = String(date.getDate()).padStart(2, '0')
+    const h = String(date.getHours()).padStart(2, '0')
+    const min = String(date.getMinutes()).padStart(2, '0')
+    return `${y}-${m}-${d} ${h}:${min}`
+}
+
+/**
+ * 构建 Python 执行环境
+ */
+const buildPythonEnv = () => {
+    const basePath = isPackaged ? process.resourcesPath : process.env.APP_ROOT || path.resolve(_dirname, '../../..')
+    const isWin = process.platform === 'win32'
+    const pythonPath = isWin
+        ? path.join(basePath, 'env/task/_aienv/Scripts/python.exe')
+        : path.join(basePath, 'env/task/_aienv/bin/python')
+    const libPath = path.join(basePath, 'env/task/lib')
+    return {pythonPath, libPath, taskDir: path.join(basePath, 'env/task')}
+}
+
+/**
+ * 设备排序优先级: USB(0) < WiFi(1) < 模拟器(2)
+ */
+const deviceSortKey = (id: string): number => {
+    if (id.startsWith('emulator-')) return 2
+    if (id.includes(':')) return 1
+    return 0
+}
+
+/**
+ * 从 adb 发现在线设备 ID 列表, USB 优先.
+ * 失败时返回空数组.
+ */
+const discoverOnlineDevices = async (): Promise<string[]> => {
+    let bin: string | null = null
+    try {
+        bin = resolveAdbBin()
+    } catch {
+        // fall back to system adb
+    }
+    const client = Adb.createClient(bin ? {bin} : {})
+    try {
+        const devices = await client.listDevicesWithPaths()
+        return devices
+            .filter((d: any) => d.type === 'device' || d.type === 'emulator')
+            .map((d: any) => d.id)
+            .sort((a: string, b: string) => deviceSortKey(a) - deviceSortKey(b))
+    } catch (e) {
+        return []
+    } finally {
+        client.kill().catch(() => {})
+    }
+}
+
+/**
+ * 构建任务运行环境变量, 与前端手动执行 (TaskRuntime) 保持一致.
+ */
+const buildTaskEnv = (
+    task: {id: number; name: string},
+    deviceIds: string[],
+    libPath: string,
+): Record<string, string> => {
+    const env: Record<string, string> = {
+        LINKANDROID_TASK_ID: `${task.id}`,
+        LINKANDROID_TASK_NAME: task.name,
+        PYTHONPATH: libPath,
+    }
+    if (deviceIds.length > 0) {
+        env.LINKANDROID_DEVICE_ID = deviceIds[0]
+        env.LINKANDROID_DEVICE_IDS = deviceIds.join(',')
+        env.ANDROID_DEVICE_ADDR = deviceIds[0]
+    }
+    try {
+        env.LINKANDROID_ADB_PATH = resolveAdbBin()
+    } catch {
+        // adb binary unavailable — skip
+    }
+    return env
+}
+
+/**
+ * 解析任务保存的「运行设置」目标设备:
+ * - run_on_all_devices = 1 → 所有在线设备
+ * - device_ids 非空 → 逗号分隔的设备 ID 列表
+ * - 均未配置 → 空数组 (调用方自行兜底)
+ */
+const parseBoundDevices = async (task: TaskRow): Promise<string[]> => {
+    if (task.run_on_all_devices === 1) {
+        return await discoverOnlineDevices()
+    }
+    return (task.device_ids || '')
+        .split(',')
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0)
+}
+
+/**
+ * 执行单个定时任务
+ */
+const executeScheduledTask = async (task: TaskRow) => {
+    const now = new Date().toISOString()
+    let runId: number | string | null = null
+
+    try {
+        // 创建 pending 记录
+        runId = await DBMain.insert(
+            `INSERT INTO task_run (created_at, updated_at, task_id, device_id, status, log, started_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [now, now, task.id, 'scheduler', 'pending', '', null],
+        )
+
+        // 更新为 running
+        await DBMain.update(`UPDATE task_run SET updated_at = ?, status = ?, started_at = ? WHERE id = ?`, [
+            now,
+            'running',
+            now,
+            runId,
+        ])
+
+        const {pythonPath, libPath, taskDir} = buildPythonEnv()
+        // 定时任务优先使用任务保存的「运行设置」设备, 未配置则自动发现
+        const boundDevices = await parseBoundDevices(task)
+        const deviceIds = boundDevices.length > 0 ? boundDevices : await discoverOnlineDevices()
+
+        let logOutput = ''
+
+        const controller = await Apps.spawnShell([pythonPath, '-c', task.code], {
+            shell: false,
+            cwd: taskDir,
+            stdout: (data: string) => {
+                logOutput += data
+            },
+            stderr: (data: string) => {
+                logOutput += data
+            },
+            env: buildTaskEnv(task, deviceIds, libPath),
+        })
+
+        const result = await controller.result()
+        logOutput = result || logOutput
+
+        const finishedAt = new Date().toISOString()
+        await DBMain.update(`UPDATE task_run SET updated_at = ?, status = ?, log = ?, finished_at = ? WHERE id = ?`, [
+            finishedAt,
+            'success',
+            logOutput,
+            finishedAt,
+            runId,
+        ])
+
+        Log.info('TaskScheduler.executeSuccess', {taskId: task.id, taskName: task.name})
+    } catch (e: any) {
+        const errMsg = e?.message || String(e)
+        const finishedAt = new Date().toISOString()
+        if (runId) {
+            await DBMain.update(
+                `UPDATE task_run SET updated_at = ?, status = ?, log = ?, finished_at = ? WHERE id = ?`,
+                [finishedAt, 'failed', errMsg, finishedAt, runId],
+            ).catch(() => {})
+        }
+        Log.error('TaskScheduler.executeFailed', {taskId: task.id, taskName: task.name, error: errMsg})
+    } finally {
+        lastTriggeredMinute.set(task.id, currentMinuteKey())
+    }
+}
+
+/**
+ * 执行一次调度检查
+ */
+const doSchedulerTick = async () => {
+    try {
+        const tasks: TaskRow[] = await DBMain.select(
+            `SELECT id, name, description, code, language, run_mode, cron_expression, device_ids, run_on_all_devices
+             FROM task
+             WHERE run_mode = 'scheduled' AND cron_expression != ''`,
+        )
+
+        const now = new Date()
+        const nowMinuteKey = currentMinuteKey(now)
+
+        for (const task of tasks) {
+            try {
+                // 检查该分钟是否已触发过
+                if (lastTriggeredMinute.get(task.id) === nowMinuteKey) {
+                    continue
+                }
+
+                const job = new Cron(task.cron_expression)
+                if (!job.match(now)) {
+                    continue
+                }
+
+                // 异步执行，不阻塞后续任务检查
+                executeScheduledTask(task).catch((e) => {
+                    Log.error('TaskScheduler.executeError', {
+                        taskId: task.id,
+                        taskName: task.name,
+                        error: e?.message || String(e),
+                    })
+                })
+            } catch (e: any) {
+                Log.error('TaskScheduler.checkError', {
+                    taskId: task.id,
+                    error: e?.message || String(e),
+                })
+            }
+        }
+    } catch (e: any) {
+        Log.error('TaskScheduler.tickError', {error: e?.message || String(e)})
+    }
+}
+
+/**
+ * 根据任务 ID 手动执行任务（供 HTTP API / CLI 调用）
+ *
+ * 设备解析优先级: deviceIds > deviceId > 任务保存的运行设置 > 自动发现 adb 在线设备 (USB 优先)
+ *
+ * @param deviceId  可选, 指定目标设备
+ * @param deviceIds 可选, 多设备列表; 优先级高于 deviceId
+ */
+export const runTaskById = async (
+    taskId: number,
+    deviceId?: string,
+    deviceIds?: string[],
+): Promise<{runId: number | string | null; success: boolean; log: string}> => {
+    const task: TaskRow | undefined = await DBMain.first(
+        `SELECT id, name, description, code, language, run_mode, cron_expression, device_ids, run_on_all_devices
+         FROM task WHERE id = ?`,
+        [taskId],
+    )
+    if (!task) {
+        return {runId: null, success: false, log: 'TaskNotFound'}
+    }
+    let runId: number | string | null = null
+    let logOutput = ''
+    try {
+        // 解析目标设备: 显式指定 > 任务绑定 > 自动发现
+        let targetIds: string[] = []
+        if (deviceIds && deviceIds.length > 0) {
+            targetIds = deviceIds
+        } else if (deviceId) {
+            targetIds = [deviceId]
+        } else {
+            targetIds = await parseBoundDevices(task)
+            if (targetIds.length === 0) {
+                targetIds = await discoverOnlineDevices()
+            }
+        }
+        if (targetIds.length === 0) {
+            throw new Error('NoOnlineDevice')
+        }
+        const now = new Date().toISOString()
+        runId = await DBMain.insert(
+            `INSERT INTO task_run (created_at, updated_at, task_id, device_id, status, log, started_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [now, now, task.id, targetIds.join(','), 'pending', '', null],
+        )
+        await DBMain.update(`UPDATE task_run SET updated_at = ?, status = ?, started_at = ? WHERE id = ?`, [
+            now,
+            'running',
+            now,
+            runId,
+        ])
+        const {pythonPath, libPath, taskDir} = buildPythonEnv()
+        const controller = await Apps.spawnShell([pythonPath, '-c', task.code], {
+            shell: false,
+            cwd: taskDir,
+            stdout: (data: string) => {
+                logOutput += data
+            },
+            stderr: (data: string) => {
+                logOutput += data
+            },
+            env: buildTaskEnv(task, targetIds, libPath),
+        })
+        const result = await controller.result()
+        logOutput = result || logOutput
+        const finishedAt = new Date().toISOString()
+        await DBMain.update(`UPDATE task_run SET updated_at = ?, status = ?, log = ?, finished_at = ? WHERE id = ?`, [
+            finishedAt,
+            'success',
+            logOutput,
+            finishedAt,
+            runId,
+        ])
+        Log.info('Task.runTaskById.success', {taskId, taskName: task.name})
+        return {runId, success: true, log: logOutput}
+    } catch (e: any) {
+        const errMsg = e?.message || String(e)
+        const finishedAt = new Date().toISOString()
+        if (runId) {
+            await DBMain.update(
+                `UPDATE task_run SET updated_at = ?, status = ?, log = ?, finished_at = ? WHERE id = ?`,
+                [finishedAt, 'failed', errMsg, finishedAt, runId],
+            ).catch(() => {})
+        }
+        Log.error('Task.runTaskById.failed', {taskId, error: errMsg})
+        return {runId, success: false, log: errMsg}
+    }
+}
+
+/**
+ * 获取指定任务的下次执行时间
+ */
+export const getNextRunTime = (cronExpression: string): string | null => {
+    if (!cronExpression) return null
+    try {
+        const job = new Cron(cronExpression)
+        const next = job.nextRun()
+        return next ? next.toISOString() : null
+    } catch {
+        return null
+    }
+}
+
+/**
+ * 获取所有定时任务的调度状态
+ */
+export const getSchedulerStatus = async (): Promise<
+    Array<{
+        id: number
+        name: string
+        cronExpression: string
+        nextRun: string | null
+        lastTriggeredAt: string | null
+    }>
+> => {
+    const tasks: TaskRow[] = await DBMain.select(
+        `SELECT id, name, cron_expression FROM task WHERE run_mode = 'scheduled' AND cron_expression != ''`,
+    )
+    return tasks.map((t) => {
+        const lastKey = lastTriggeredMinute.get(t.id)
+        const lastTriggeredAt = lastKey ? `${lastKey}:00Z` : null
+        return {
+            id: t.id,
+            name: t.name,
+            cronExpression: t.cron_expression,
+            nextRun: getNextRunTime(t.cron_expression),
+            lastTriggeredAt,
+        }
+    })
+}
+
+/**
+ * 重置某任务的触发状态（用于测试/手动更新后）
+ */
+export const resetTaskTrigger = (taskId: number) => {
+    lastTriggeredMinute.delete(taskId)
+}
+
+/**
+ * 启动调度器
+ */
+export const start = () => {
+    if (intervalHandle) return
+    Log.info('TaskScheduler.start', {})
+    // 启动后立即执行一次
+    doSchedulerTick()
+    intervalHandle = setInterval(doSchedulerTick, CHECK_INTERVAL_MS)
+}
+
+/**
+ * 停止调度器
+ */
+export const stop = () => {
+    if (intervalHandle) {
+        clearInterval(intervalHandle)
+        intervalHandle = null
+    }
+    lastTriggeredMinute.clear()
+    Log.info('TaskScheduler.stop', {})
+}
+
+/**
+ * 调度器是否正在运行
+ */
+export const isRunning = (): boolean => {
+    return intervalHandle !== null
+}

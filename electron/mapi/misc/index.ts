@@ -1,7 +1,9 @@
-import fs from "node:fs";
-
-import yauzl from "yauzl";
-import archiver from "archiver";
+import archiver from 'archiver'
+import axios from 'axios'
+import fs from 'node:fs'
+import path from 'node:path'
+import os from 'node:os'
+import yauzl from 'yauzl'
 
 const getZipFileContent = async (path: string, pathInZip: string) => {
     return new Promise((resolve, reject) => {
@@ -16,11 +18,11 @@ const getZipFileContent = async (path: string, pathInZip: string) => {
                 // console.log('getZipFileContent error', err)
                 reject(err)
             })
-            zipfile.on("end", function () {
+            zipfile.on('end', function () {
                 // console.log('getZipFileContent end')
-                reject("FileNotFound")
+                reject('FileNotFound')
             })
-            zipfile.on("entry", function (entry: any) {
+            zipfile.on('entry', function (entry: any) {
                 // console.log('getZipFileContent entry', entry.fileName)
                 if (entry.fileName === pathInZip) {
                     zipfile.openReadStream(entry, function (err: any, readStream: any) {
@@ -29,10 +31,10 @@ const getZipFileContent = async (path: string, pathInZip: string) => {
                             return
                         }
                         let chunks: any[] = []
-                        readStream.on("data", function (chunk: any) {
+                        readStream.on('data', function (chunk: any) {
                             chunks.push(chunk)
                         })
-                        readStream.on("end", function () {
+                        readStream.on('end', function () {
                             const bytes = Buffer.concat(chunks)
                             const text = bytes.toString('utf8')
                             resolve(text)
@@ -52,11 +54,14 @@ const unzip = async (
     dest: string,
     option?: {
         process: (type: 'start' | 'end', entry: any) => void
-    }
+    },
 ) => {
-    option = Object.assign({
-        process: null
-    }, option)
+    option = Object.assign(
+        {
+            process: null,
+        },
+        option,
+    )
     if (!fs.existsSync(dest)) {
         fs.mkdirSync(dest, {recursive: true})
     }
@@ -72,11 +77,11 @@ const unzip = async (
                 // console.log('unzip error', err)
                 reject(err)
             })
-            zipfile.on("end", function () {
+            zipfile.on('end', function () {
                 // console.log('unzip end')
-                resolve(true)
+                resolve(undefined)
             })
-            zipfile.on("entry", function (entry: any) {
+            zipfile.on('entry', function (entry: any) {
                 if (option.process) {
                     option.process('start', entry)
                 }
@@ -96,7 +101,7 @@ const unzip = async (
                             reject(err)
                             return
                         }
-                        readStream.on("end", function () {
+                        readStream.on('end', function () {
                             if (option.process) {
                                 option.process('end', entry)
                             }
@@ -115,36 +120,135 @@ const zip = async (
     zipPath: string,
     sourceDir: string,
     option?: {
-        end?: (archive: any) => void,
-    }
-) => {
-    option = Object.assign({
-        end: null,
-    }, option)
+        end?: (archive: any) => Promise<void>
+        filter?: (params: {name: string; path: string; fullPath: string; isDir: boolean}) => Promise<boolean>
+    },
+): Promise<void> => {
+    option = Object.assign(
+        {
+            end: null,
+            filter: null,
+        },
+        option,
+    )
     return new Promise((resolve, reject) => {
         const output = fs.createWriteStream(zipPath)
         const archive = archiver('zip', {
-            zlib: {level: 9}
+            zlib: {level: 9},
         })
         output.on('close', function () {
-            resolve(true)
+            resolve(undefined)
         })
         archive.on('error', function (err: any) {
             reject(err)
         })
         archive.pipe(output)
-        archive.directory(sourceDir, false)
-        if (option.end) {
-            option.end(archive)
+
+        const addFiles = async (dir: string, relativePath: string = '') => {
+            const items = fs.readdirSync(path.join(dir, relativePath))
+            for (const item of items) {
+                const fullPath = path.join(dir, relativePath, item)
+                const relPath = path.join(relativePath, item).replace(/\\/g, '/') // Normalize for zip
+                const stat = fs.statSync(fullPath)
+                const isDir = stat.isDirectory()
+                const shouldInclude =
+                    !option.filter ||
+                    (await option.filter({
+                        name: item,
+                        path: relPath,
+                        fullPath,
+                        isDir,
+                    }))
+                if (isDir) {
+                    if (shouldInclude) {
+                        await addFiles(dir, relPath)
+                    }
+                } else {
+                    if (shouldInclude) {
+                        archive.file(fullPath, {name: relPath})
+                    }
+                }
+            }
         }
-        archive.finalize()
+
+        addFiles(sourceDir)
+            .then(async () => {
+                if (option.end) {
+                    await option.end(archive)
+                }
+                archive.finalize()
+            })
+            .catch(reject)
     })
+}
+
+const request = async (option: {
+    url: string
+    method?: 'GET' | 'POST'
+    responseType?: 'json' | 'text' | 'arraybuffer'
+    headers?: any
+    data?: any
+}) => {
+    option = Object.assign(
+        {
+            url: '',
+            method: 'GET',
+            responseType: 'json',
+            headers: {},
+            data: null,
+        },
+        option,
+    )
+    const response = await axios.request({
+        url: option.url,
+        method: option.method,
+        responseType: option.responseType === 'arraybuffer' ? 'arraybuffer' : 'text',
+        headers: option.headers,
+        data: option.data,
+    })
+    if (response.status !== 200) {
+        throw new Error(`Request failed with status code ${response.status}`)
+    }
+    if (option.responseType === 'json') {
+        return JSON.parse(response.data)
+    } else if (option.responseType === 'text') {
+        return response.data
+    } else if (option.responseType === 'arraybuffer') {
+        return Buffer.from(response.data)
+    } else {
+        return response.data
+    }
+}
+
+const getNetworkInterfaces = () => {
+    const interfaces = os.networkInterfaces()
+    const result: Array<{name: string; address: string; family: string; internal: boolean}> = []
+
+    for (const [name, addresses] of Object.entries(interfaces)) {
+        if (!addresses) continue
+
+        for (const addr of addresses) {
+            // Filter out internal (loopback) addresses and only include IPv4
+            if (!addr.internal && addr.family === 'IPv4') {
+                result.push({
+                    name,
+                    address: addr.address,
+                    family: addr.family,
+                    internal: addr.internal,
+                })
+            }
+        }
+    }
+
+    return result
 }
 
 export const Misc = {
     getZipFileContent,
     unzip,
     zip,
+    request,
+    getNetworkInterfaces,
 }
 
 export default Misc

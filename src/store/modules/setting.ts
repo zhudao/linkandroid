@@ -1,10 +1,10 @@
-import {defineStore} from "pinia"
-import store from "../index";
-import {AppConfig} from "../../config";
-import {computed} from "vue";
-import {cloneDeep} from "lodash-es";
+import {cloneDeep} from 'lodash-es'
+import {defineStore} from 'pinia'
+import {computed} from 'vue'
+import {AppConfig} from '../../config'
+import store from '../index'
 
-export const settingStore = defineStore("setting", {
+export const settingStore = defineStore('setting', {
     state() {
         return {
             version: AppConfig.version,
@@ -17,7 +17,7 @@ export const settingStore = defineStore("setting", {
                 guideWatched: false as boolean,
                 darkMode: '' as 'light' | 'dark' | 'auto',
             },
-            configEnv: {}
+            configEnv: {},
         }
     },
     actions: {
@@ -32,7 +32,7 @@ export const settingStore = defineStore("setting", {
             })
         },
         async showGuideWhenReady() {
-            if (!await window.$mapi.app.setupIsOk()) {
+            if (!(await window.$mapi.app.setupIsOk())) {
                 setTimeout(() => {
                     this.showGuideWhenReady()
                 }, 1000)
@@ -46,14 +46,14 @@ export const settingStore = defineStore("setting", {
             }, 2000)
         },
         onConfigChangeBroadcast(data: any) {
-            (async () => {
+            ;(async () => {
                 // console.log('onConfigChangeBroadcast', data)
                 this.config = await window.$mapi.config.all()
                 this.setupDarkMode()
             })()
         },
         onConfigEnvChangeBroadcast(data: any) {
-            (async () => {
+            ;(async () => {
                 this.configEnv = await window.$mapi.config.allEnv()
             })()
         },
@@ -79,9 +79,9 @@ export const settingStore = defineStore("setting", {
                 document.body.setAttribute('data-theme', 'dark')
                 document.documentElement.setAttribute('data-theme', 'dark')
             } else {
-                document.body.removeAttribute('arco-theme');
-                document.body.removeAttribute('data-theme');
-                document.documentElement.removeAttribute('data-theme');
+                document.body.removeAttribute('arco-theme')
+                document.body.removeAttribute('data-theme')
+                document.documentElement.removeAttribute('data-theme')
             }
         },
         async initBasic(basic: object) {
@@ -120,8 +120,8 @@ export const settingStore = defineStore("setting", {
                 }
                 return defaultValue
             })
-        }
-    }
+        },
+    },
 })
 
 const setting = settingStore(store)

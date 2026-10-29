@@ -1,14 +1,14 @@
-import {ipcMain, shell} from "electron";
-import {AppConfig} from "../../../src/config";
-import {ResultType} from "../../lib/api";
-import {Events} from "../event/main";
-import {platformUUID} from "../../lib/env";
-import {AppsMain} from "../app/main";
-import Apps from "../app";
-import StorageMain from "../storage/main";
-import {Log} from "../log/main";
+import {ipcMain, shell} from 'electron'
+import {AppConfig} from '../../../src/config'
+import {ResultType} from '../../lib/api'
+import {Events} from '../event/main'
+import {platformUUID} from '../../lib/env'
+import {AppsMain} from '../app/main'
+import Apps from '../app'
+import StorageMain from '../storage/main'
+import {Log} from '../log/main'
 
-const init = () => {
+const init = async () => {
     setTimeout(() => {
         refresh().then()
     }, 1000)
@@ -29,19 +29,19 @@ const userData = {
 }
 
 const get = async (): Promise<{
-    apiToken: string,
+    apiToken: string
     user: {
-        id: string,
-        name: string,
-        avatar: string,
-        deviceCode: string,
-    },
+        id: string
+        name: string
+        avatar: string
+        deviceCode: string
+    }
     data: {
-        [key: string]: any,
-    },
+        [key: string]: any
+    }
     basic: {
-        [key: string]: any,
-    },
+        [key: string]: any
+    }
 }> => {
     if (!userData.isInit) {
         const userStorageData = await StorageMain.get('user', 'data', {})
@@ -60,16 +60,35 @@ const get = async (): Promise<{
     }
 }
 
+ipcMain.handle(
+    'user:open',
+    async (
+        event,
+        option?: {
+            readyParam: {
+                page?: string
+                [key: string]: any
+            }
+        },
+    ) => {
+        option = Object.assign(
+            {
+                readyParam: null,
+            },
+            option || {},
+        )
+        await AppsMain.windowOpen('user', option)
+        if (option.readyParam) {
+            await Events.callPage('user', 'ready', option.readyParam)
+        }
+    },
+)
+
 ipcMain.handle('user:get', async (event) => {
     return get()
 })
 
-const save = async (data: {
-    apiToken: string,
-    user: any,
-    data: any,
-    basic: {},
-}) => {
+const save = async (data: {apiToken: string; user: any; data: any; basic: {}}) => {
     userData.apiToken = data.apiToken || ''
     userData.user = data.user || {}
     userData.data = data.data || {}
@@ -89,7 +108,7 @@ ipcMain.handle('user:save', async (event, data) => {
 
 const refresh = async () => {
     const result = await userInfoApi()
-    // console.log('user.refresh', result)
+    // console.log("user.refresh", JSON.stringify(result, null, 2));
     await save({
         apiToken: result.data.apiToken,
         user: result.data.user,
@@ -142,8 +161,8 @@ const apiPost = async (
     url: string,
     data: Record<string, any>,
     option?: {
-        throwException?: boolean,
-    }
+        throwException?: boolean
+    },
 ) => {
     return post(url, data, option)
 }
@@ -167,24 +186,28 @@ const post = async <T>(
     api: string,
     data: Record<string, any>,
     option?: {
-        throwException?: boolean,
-        retry?: number,
-        retryTimes?: number,
-        retryInterval?: number,
-    }
+        throwException?: boolean
+        retry?: number
+        retryTimes?: number
+        retryInterval?: number
+    },
 ): Promise<ResultType<T>> => {
-    option = Object.assign({
-        throwException: true,
-        retry: 0,
-        retryTimes: 0,
-        retryInterval: 5,
-    }, option)
+    option = Object.assign(
+        {
+            throwException: true,
+            retry: 0,
+            retryTimes: 0,
+            retryInterval: 5,
+        },
+        option,
+    )
     let url = api
     if (!api.startsWith('http:') && !api.startsWith('https:')) {
         url = `${AppConfig.apiBaseUrl}/${api}`
     }
     const apiToken = await User.getApiToken()
-    let json = null, res = null
+    let json = null,
+        res = null
     try {
         res = await fetch(url, {
             method: 'POST',
@@ -193,13 +216,13 @@ const post = async <T>(
                 'Content-Type': 'application/json',
                 'Api-Token': apiToken,
             },
-            body: JSON.stringify(data)
+            body: JSON.stringify(data),
         })
         if (res.status !== 200) {
             if (option.retry > 0 && option.retryTimes < option.retry) {
                 option.retryTimes++
                 Log.info('user.post.retry', {api, data, res, retryTimes: option.retryTimes})
-                await new Promise(resolve => setTimeout(resolve, option.retryInterval * 1000))
+                await new Promise((resolve) => setTimeout(resolve, option.retryInterval * 1000))
                 return await post(api, data, option)
             }
             Log.error('user.post.error', {api, data, res})
@@ -208,7 +231,7 @@ const post = async <T>(
             }
             return {
                 code: 10000,
-                msg: `RequestError(code:${res.status},text:${res.statusText})`
+                msg: `RequestError(code:${res.status},text:${res.statusText})`,
             } as ResultType<T>
         }
         json = await res.json()
@@ -220,14 +243,19 @@ const post = async <T>(
         if (option.retry > 0 && option.retryTimes < option.retry) {
             option.retryTimes++
             Log.info('user.post.retry', {api, data, res, retryTimes: option.retryTimes})
-            await new Promise(resolve => setTimeout(resolve, option.retryInterval * 1000))
+            await new Promise((resolve) => setTimeout(resolve, option.retryInterval * 1000))
             return await post(api, data, option)
         }
         Log.error('user.post.error', {api, data, res})
+        const resInfo =
+            res && typeof res === 'object' && 'status' in res
+                ? `httpStatus:${res.status},statusText:${res.statusText}`
+                : `response:${String(res)}`
+        const errMsg = `ResponseError(api:${api},${resInfo})`
         if (option.throwException) {
-            throw 'ResponseError'
+            throw errMsg
         }
-        return {code: 10000, msg: 'ResponseError'}
+        return {code: 10000, msg: errMsg}
     }
     if (json.code) {
         // login required
@@ -243,16 +271,18 @@ const post = async <T>(
     return json
 }
 
-const userInfoApi = async (): Promise<ResultType<{
-    apiToken: string,
-    user: object,
-    data: any,
-    basic: object,
-}>> => {
+const userInfoApi = async (): Promise<
+    ResultType<{
+        apiToken: string
+        user: object
+        data: any
+        basic: object
+    }>
+> => {
     return await post('app_manager/user_info', {})
 }
 
 export const UserApi = {
     post,
-    userInfoApi
+    userInfoApi,
 }

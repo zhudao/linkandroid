@@ -1,12 +1,12 @@
-import {BrowserWindow} from "electron";
-import {preloadDefault, rendererLoadPath} from "../lib/env-main";
-import {Page} from "./index";
-import {AppConfig} from "../../src/config";
-import {icnsLogoPath, icoLogoPath, logoPath} from "../config/icon";
-import {isPackaged} from "../lib/env";
-import {WindowConfig} from "../config/window";
-import * as remoteMain from "@electron/remote/main";
-import {DevToolsManager} from "../lib/devtools";
+import {BrowserWindow} from 'electron'
+import {preloadDefault, rendererLoadPath} from '../lib/env-main'
+import {Page} from './index'
+import {AppConfig} from '../../src/config'
+import {icnsLogoPath, icoLogoPath, logoPath} from '../config/icon'
+import {isPackaged} from '../lib/env'
+import {WindowConfig} from '../config/window'
+import * as remoteMain from '@electron/remote/main'
+import {DevToolsManager} from '../lib/devtools'
 
 export const PageSetup = {
     NAME: 'setup',
@@ -19,9 +19,11 @@ export const PageSetup = {
         }
         const win = new BrowserWindow({
             show: true,
-            title: AppConfig.name,
+            title: AppConfig.title,
             ...(!isPackaged ? {icon} : {}),
             frame: false,
+            titleBarStyle: 'hidden',
+            trafficLightPosition: {x: 10, y: 11},
             transparent: false,
             hasShadow: true,
             center: true,
@@ -52,7 +54,7 @@ export const PageSetup = {
             Page.unregisterWindow(PageSetup.NAME)
         })
 
-        rendererLoadPath(win, 'page/setup.html');
+        rendererLoadPath(win, 'page/setup.html')
 
         remoteMain.enable(win.webContents)
 
@@ -66,5 +68,5 @@ export const PageSetup = {
         //     return {action: 'deny'}
         // })
         Page.registerWindow(PageSetup.NAME, win)
-    }
+    },
 }

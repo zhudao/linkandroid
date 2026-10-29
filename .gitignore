@@ -13,6 +13,7 @@ dist-ssr
 dist-electron
 dist-release
 *.local
+.env
 
 # Editor directories and files
 .vscode/.debug.env
@@ -25,11 +26,44 @@ dist-release
 *.sw?
 
 # lockfile
-package-lock.json
 pnpm-lock.yaml
 yarn.lock
 database.db
 
-src/lang/source-use.json
+/cli/linkandroid*
 /data
 /build/
+/data-*
+.github/copilot-instructions.md
+
+
+/electron/resources/extra/linux-arm64/
+/electron/resources/extra/linux-x86/
+/electron/resources/extra/osx-arm64/
+/electron/resources/extra/osx-x86/
+/electron/resources/extra/win-x86/
+
+/AGENTS.md
+/.agents
+dist-cli/
+/cli/linkandroid-cli
+*.tsbuildinfo
+test-results/
+/_temp/
+/DEV_QUEUE.md
+/DEV_DONE.md
+/DEV_BACKUP.md
+
+__pycache__/
+/env/task/_cache/
+
+
+/storage/screenshot/image/
+/storage/screenshot-last/image/
+
+# Python 虚拟环境 (env/task 中的便携 Python)
+/env/task/_aienv/
+
+# OpenCode
+_temp/
+DEV_*.md

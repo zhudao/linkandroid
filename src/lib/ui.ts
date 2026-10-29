@@ -4,8 +4,8 @@ type DomListener = {
 }
 let domListeners: DomListener[] = []
 const resizeObserver = new ResizeObserver((entries) => {
-    entries.forEach(entry => {
-        domListeners.forEach(item => {
+    entries.forEach((entry) => {
+        domListeners.forEach((item) => {
             if (item.dom === entry.target) {
                 const {width, height} = entry.contentRect
                 item.callback(width, height)
@@ -19,7 +19,7 @@ type WindowListener = {
 }
 let windowListeners: WindowListener[] = []
 window.addEventListener('resize', () => {
-    windowListeners.forEach(item => {
+    windowListeners.forEach((item) => {
         item.callback(window.innerWidth, window.innerHeight)
     })
 })
@@ -29,7 +29,7 @@ export const UI = {
         windowListeners.push({callback})
     },
     offWindowResize(callback: (width: number, height: number) => void) {
-        windowListeners = windowListeners.filter(item => item.callback !== callback)
+        windowListeners = windowListeners.filter((item) => item.callback !== callback)
     },
     onResize(dom: HTMLElement | null, callback: (width: number, height: number) => void) {
         if (!dom) return
@@ -38,19 +38,37 @@ export const UI = {
     },
     offResize(dom: HTMLElement | null) {
         if (!dom) return
-        domListeners = domListeners.filter(item => item.dom !== dom)
+        domListeners = domListeners.filter((item) => item.dom !== dom)
         resizeObserver.unobserve(dom)
     },
     fireResize(dom: HTMLElement) {
-        domListeners.forEach(item => {
+        domListeners.forEach((item) => {
             if (item.dom === dom) {
                 const {width, height} = dom.getBoundingClientRect()
                 item.callback(width, height)
             }
         })
-    }
+    },
+    smoothScrollTop: (element: HTMLElement, to: number, duration = 200) => {
+        return new Promise((resolve) => {
+            const start = element.scrollTop
+            const change = to - start
+            const startTime = performance.now()
+            const animate = (now) => {
+                const progress = Math.min((now - startTime) / duration, 1)
+                const eased =
+                    progress < 0.5 ? 4 * progress * progress * progress : 1 - Math.pow(-2 * progress + 2, 3) / 2
+                element.scrollTop = start + change * eased
+                if (progress < 1) {
+                    requestAnimationFrame(animate)
+                } else {
+                    resolve(undefined)
+                }
+            }
+            requestAnimationFrame(animate)
+        })
+    },
 }
-
 
 export class TabContentScroller {
     private option: {
@@ -63,14 +81,17 @@ export class TabContentScroller {
     private scrollEndCallback: (() => void) | null = null
 
     constructor(tabContainer: HTMLElement, contentContainer: HTMLElement, option: {} = {}) {
-        this.option = Object.assign({
-            activeClass: 'active',
-        }, option) || {}
+        this.option =
+            Object.assign(
+                {
+                    activeClass: 'active',
+                },
+                option,
+            ) || {}
         this.tabContainer = tabContainer
         this.contentContainer = contentContainer
         this.init()
     }
-
 
     init() {
         this.tabContainer.addEventListener('click', this.onTabClickEvent.bind(this))
@@ -149,7 +170,7 @@ export class TabContentScroller {
             return
         }
         content.scrollIntoView({
-            behavior: 'smooth'
+            behavior: 'smooth',
         })
     }
 }

@@ -27,7 +27,7 @@ import unknown from './FileExtAssets/unknown.svg'
 import xls from './FileExtAssets/xls.svg'
 import xlsx from './FileExtAssets/xlsx.svg'
 import zip from './FileExtAssets/zip.svg'
-import {computed} from "vue";
+import {computed} from 'vue'
 
 const images = {
     ai,
@@ -57,17 +57,20 @@ const images = {
     unknown,
     xls,
     xlsx,
-    zip
+    zip,
 }
 
-const props = withDefaults(defineProps<{
-    isFolder?: boolean,
-    name: string,
-    size?: string
-}>(), {
-    isFolder: false,
-    size: '100%'
-})
+const props = withDefaults(
+    defineProps<{
+        isFolder?: boolean
+        name: string
+        size?: string
+    }>(),
+    {
+        isFolder: false,
+        size: '100%',
+    },
+)
 
 const extSrc = computed(() => {
     if (props.isFolder) {
@@ -83,13 +86,10 @@ const extSrc = computed(() => {
 const extSrcUrl = computed(() => {
     return `url("${extSrc.value}")`
 })
-
 </script>
 
 <template>
-    <div class="pb-file-ext"
-         :style="{width: props.size, height: props.size, backgroundImage:extSrcUrl}">
-    </div>
+    <div class="pb-file-ext" :style="{width: props.size, height: props.size, backgroundImage: extSrcUrl}"></div>
 </template>
 
 <style scoped>

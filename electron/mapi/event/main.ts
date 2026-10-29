@@ -1,16 +1,13 @@
-import {AppRuntime} from "../env";
-import {ipcMain} from "electron";
-import {StrUtil} from "../../lib/util";
+import {AppRuntime} from '../env'
+import {ipcMain, WebContents} from 'electron'
+import {StrUtil} from '../../lib/util'
 
+const init = async () => {}
 
-const init = () => {
-
-}
-
-type NameType = 'main' | string
+type NameType = 'main' | string | WebContents
 type EventType = 'APP_READY' | 'CALL_PAGE' | 'CHANNEL' | 'BROADCAST'
 type BroadcastType =
-    'ConfigChange'
+    | 'ConfigChange'
     | 'ConfigEnvChange'
     | 'UserChange'
     | 'DarkModeChange'
@@ -18,17 +15,24 @@ type BroadcastType =
     | 'Notice'
     | 'MonitorEvent'
 
-const broadcast = (type: BroadcastType, data: any, option?: {
-    limit?: boolean,
-    scopes?: string[],
-    pages?: string[]
-}) => {
+const broadcast = (
+    type: BroadcastType,
+    data: any,
+    option?: {
+        limit?: boolean
+        scopes?: string[]
+        pages?: string[]
+    },
+) => {
     data = data || {}
-    option = Object.assign({
-        limit: false,
-        scopes: [],
-        pages: [],
-    }, option)
+    option = Object.assign(
+        {
+            limit: false,
+            scopes: [],
+            pages: [],
+        },
+        option,
+    )
     if (option.pages.length > 0) {
         for (const p of option.pages) {
             send(p, 'BROADCAST', {type, data})
@@ -55,6 +59,10 @@ const sendRaw = (webContents: any, type: EventType, data: any = {}, id?: string)
 const send = (name: NameType, type: EventType, data: any = {}, id?: string): boolean => {
     id = id || StrUtil.randomString(32)
     const payload = {id, type, data}
+    if (typeof name !== 'string') {
+        ;(name as WebContents).send('MAIN_PROCESS_MESSAGE', payload)
+        return true
+    }
     if (name === 'main') {
         if (!AppRuntime.mainWindow) {
             return false
@@ -74,14 +82,26 @@ ipcMain.handle('event:send', async (_, name: NameType, type: EventType, data: an
     send(name, type, data)
 })
 
-const callPage = async (name: string, type: string, data: any, option?: {
-    waitReadyTimeout?: number,
-    timeout?: number
-}) => {
-    option = Object.assign({
-        waitReadyTimeout: 10 * 1000,
-        timeout: 10 * 1000
-    }, option)
+const callPage = async (
+    name: NameType,
+    type: string,
+    data: any,
+    option?: {
+        waitReadyTimeout?: number
+        timeout?: number
+    },
+): Promise<{
+    code: number
+    msg: string
+    data?: any
+}> => {
+    option = Object.assign(
+        {
+            waitReadyTimeout: 10 * 1000,
+            timeout: 60 * 1000,
+        },
+        option,
+    )
     return new Promise((resolve, reject) => {
         const id = StrUtil.randomString(32)
         const timer = setTimeout(() => {
@@ -99,8 +119,8 @@ const callPage = async (name: string, type: string, data: any, option?: {
             type,
             data,
             option: {
-                waitReadyTimeout: option.waitReadyTimeout
-            }
+                waitReadyTimeout: option.waitReadyTimeout,
+            },
         }
         if (!send(name, 'CALL_PAGE', payload, id)) {
             clearTimeout(timer)
@@ -110,11 +130,20 @@ const callPage = async (name: string, type: string, data: any, option?: {
     })
 }
 
-ipcMain.handle('event:callPage', async (_, name: string, type: string, data: any, option?: {
-    timeout?: number
-}) => {
-    return callPage(name, type, data, option)
-})
+ipcMain.handle(
+    'event:callPage',
+    async (
+        _,
+        name: string,
+        type: string,
+        data: any,
+        option?: {
+            timeout?: number
+        },
+    ) => {
+        return callPage(name, type, data, option)
+    },
+)
 
 let onChannelIsListen = false
 let channelOnCallback = {}
@@ -153,7 +182,7 @@ const offChannel = (channel: string, callback: (data: any) => void) => {
 
 export default {
     init,
-    send
+    send,
 }
 
 export const Events = {

@@ -1,9 +1,6 @@
-import {ipcRenderer} from "electron";
+import {ipcRenderer} from 'electron'
 
-
-const init = () => {
-
-}
+const init = () => {}
 
 const execute = async (sql: string, params: any = []) => {
     return ipcRenderer.invoke('db:execute', sql, params)
@@ -36,5 +33,5 @@ export default {
     first,
     select,
     update,
-    delete: deletes
+    delete: deletes,
 }

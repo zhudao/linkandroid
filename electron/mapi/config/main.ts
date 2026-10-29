@@ -1,21 +1,43 @@
-import path from "node:path";
-import {AppEnv} from "../env";
-import fs from "node:fs";
-import {dialog, ipcMain} from "electron";
-import {Events} from "../event/main";
+import path from 'node:path'
+import {AppEnv} from '../env'
+import fs from 'node:fs'
+import {ipcMain} from 'electron'
+import {Events} from '../event/main'
 
 let data = null
 let dataEnv = {}
 
-const configPath = () => {
+const userDataRoot = () => {
     return path.join(AppEnv.userData, 'config.json')
+}
+
+const dataRoot = () => {
+    return path.join(AppEnv.dataRoot, 'config.json')
+}
+
+const filePath = () => {
+    return dataRoot()
+}
+
+const loadPath = () => {
+    if (fs.existsSync(dataRoot())) {
+        return dataRoot()
+    }
+    if (fs.existsSync(userDataRoot())) {
+        return userDataRoot()
+    }
+    return dataRoot()
 }
 
 const load = () => {
     try {
-        let json = fs.readFileSync(configPath()).toString()
+        const p = loadPath()
+        let json = fs.readFileSync(p).toString()
         json = JSON.parse(json)
         data = json || {}
+        if (p !== dataRoot()) {
+            save()
+        }
     } catch (e) {
         data = {}
     }
@@ -28,7 +50,12 @@ const loadIfNeed = () => {
 }
 
 const save = () => {
-    fs.writeFileSync(configPath(), JSON.stringify(data, null, 4))
+    const p = filePath()
+    const dir = path.dirname(p)
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, {recursive: true})
+    }
+    fs.writeFileSync(p, JSON.stringify(data, null, 4))
 }
 
 const all = async () => {

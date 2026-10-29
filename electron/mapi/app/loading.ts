@@ -1,21 +1,26 @@
-import {BrowserWindow} from "electron";
-import {AppsMain} from "./main";
-import {icons} from "./icons";
+import {BrowserWindow} from 'electron'
+import {AppsMain} from './main'
+import {icons} from './icons'
 
-export const makeLoading = (msg: string, options?: {
-    timeout?: number,
-    percentAuto?: boolean,
-    percentTotalSeconds?: number,
-}): {
-    close: () => void,
+export const makeLoading = (
+    msg: string,
+    options?: {
+        timeout?: number
+        percentAuto?: boolean
+        percentTotalSeconds?: number
+    },
+): {
+    close: () => void
     percent: (value: number) => void
 } => {
-
-    options = Object.assign({
-        percentAuto: false,
-        percentTotalSeconds: 30,
-        timeout: 0
-    }, options)
+    options = Object.assign(
+        {
+            percentAuto: false,
+            percentTotalSeconds: 30,
+            timeout: 0,
+        },
+        options,
+    )
 
     if (options.timeout === 0) {
         options.timeout = 60 * 10 * 1000
@@ -107,32 +112,37 @@ export const makeLoading = (msg: string, options?: {
       </div>
     </body>
   </html>
-`;
+`
 
-    const encodedHTML = encodeURIComponent(htmlContent);
+    const encodedHTML = encodeURIComponent(htmlContent)
     let percentAutoTimer = null
-    win.loadURL(`data:text/html;charset=UTF-8,${encodedHTML}`);
+    win.loadURL(`data:text/html;charset=UTF-8,${encodedHTML}`)
     win.on('ready-to-show', async () => {
-        const width = Math.ceil(await win.webContents.executeJavaScript(`(()=>{
+        const width = Math.ceil(
+            await win.webContents.executeJavaScript(`(()=>{
             const message = document.getElementById('message');
             const width = message.scrollWidth;
             return width;
-        })()`))
+        })()`),
+        )
         win.setSize(width + 20, height)
-        const x = display.workArea.x + (display.workArea.width / 2) - ((width + 20) / 2)
-        const y = display.workArea.y + (display.workArea.height * 1 / 4)
+        const x = display.workArea.x + display.workArea.width / 2 - (width + 20) / 2
+        const y = display.workArea.y + (display.workArea.height * 1) / 4
         win.setPosition(Math.floor(x), Math.floor(y))
         win.show()
         if (options.percentAuto) {
             let percent = 0
-            percentAutoTimer = setInterval(() => {
-                percent += 0.01
-                if (percent >= 1) {
-                    clearInterval(percentAutoTimer)
-                    return
-                }
-                controller.percent(percent)
-            }, options.percentTotalSeconds * 1000 / 100)
+            percentAutoTimer = setInterval(
+                () => {
+                    percent += 0.01
+                    if (percent >= 1) {
+                        clearInterval(percentAutoTimer)
+                        return
+                    }
+                    controller.percent(percent)
+                },
+                (options.percentTotalSeconds * 1000) / 100,
+            )
         }
         // win.webContents.openDevTools({
         //     mode: 'detach'
@@ -158,7 +168,7 @@ export const makeLoading = (msg: string, options?: {
                 percent.style.display = 'block';
                 percentValue.style.width = '${percent}%';
             })()`)
-        }
+        },
     }
     return controller
 }

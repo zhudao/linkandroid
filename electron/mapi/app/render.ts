@@ -1,8 +1,8 @@
-import {ipcRenderer} from "electron";
-import {resolve} from "node:path";
-import {isPackaged, platformName, platformArch} from "../../lib/env";
-import {AppEnv, waitAppEnvReady} from "../env";
-import appIndex from "./index";
+import {ipcRenderer} from 'electron'
+import {resolve} from 'node:path'
+import {isPackaged, platformArch, platformName} from '../../lib/env'
+import {AppEnv, waitAppEnvReady} from '../env'
+import appIndex from './index'
 
 const isDarkMode = async () => {
     return ipcRenderer.invoke('app:isDarkMode')
@@ -28,10 +28,15 @@ const windowMax = (name?: string) => {
     return ipcRenderer.invoke('window:max', name)
 }
 
-const windowSetSize = (name: string | null, width: number, height: number, option?: {
-    includeMinimumSize: boolean,
-    center: boolean
-}) => {
+const windowSetSize = (
+    name: string | null,
+    width: number,
+    height: number,
+    option?: {
+        includeMinimumSize: boolean
+        center: boolean
+    },
+) => {
     return ipcRenderer.invoke('window:setSize', name, width, height, option)
 }
 
@@ -47,12 +52,20 @@ const windowClose = (name: string) => {
     return ipcRenderer.invoke('window:close', name)
 }
 
-const windowMove = (name: string | null, data: { mouseX: number, mouseY: number, width: number, height: number }) => {
+const windowMove = (name: string | null, data: {mouseX: number; mouseY: number; width: number; height: number}) => {
     return ipcRenderer.invoke('window:move', name, data)
 }
 
-const openExternalWeb = (url: string) => {
-    return ipcRenderer.invoke('app:openExternalWeb', url)
+const openExternal = (url: string) => {
+    return ipcRenderer.invoke('app:openExternal', url)
+}
+
+const openPath = (url: string) => {
+    return ipcRenderer.invoke('app:openPath', url)
+}
+
+const showItemInFolder = (url: string) => {
+    return ipcRenderer.invoke('app:showItemInFolder', url)
 }
 
 const getPreload = async () => {
@@ -81,6 +94,9 @@ const setRenderAppEnv = (env: any) => {
     AppEnv.appRoot = env.appRoot
     AppEnv.appData = env.appData
     AppEnv.userData = env.userData
+    AppEnv.dataRoot = env.dataRoot
+    AppEnv.dataRootDefault = env.dataRootDefault
+    AppEnv.dataRootIsDefault = env.dataRootIsDefault
 }
 
 const getClipboardText = () => {
@@ -131,6 +147,10 @@ const getAutoLaunch = async (options?: {}) => {
     return ipcRenderer.invoke('app:getAutoLaunch', options)
 }
 
+const ensureAienv = async (): Promise<{ok: boolean; error?: string}> => {
+    return ipcRenderer.invoke('app:ensureAienv')
+}
+
 export const AppsRender = {
     isDarkMode,
     resourcePathResolve,
@@ -147,7 +167,9 @@ export const AppsRender = {
     windowHide,
     windowClose,
     windowMove,
-    openExternalWeb,
+    openExternal,
+    openPath,
+    showItemInFolder,
     getPreload,
     appEnv,
     setRenderAppEnv,
@@ -163,12 +185,13 @@ export const AppsRender = {
     collect,
     setAutoLaunch,
     getAutoLaunch,
+    ensureAienv,
     shell: appIndex.shell,
     spawnShell: appIndex.spawnShell,
+    spawnBinary: appIndex.spawnBinary,
     availablePort: appIndex.availablePort,
     fixExecutable: appIndex.fixExecutable,
     getUserAgent: appIndex.getUserAgent,
 }
 
 export default AppsRender
-

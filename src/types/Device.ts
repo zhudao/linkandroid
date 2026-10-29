@@ -1,4 +1,4 @@
-import {ComputedRef} from "vue";
+import {ComputedRef} from 'vue'
 
 export enum EnumDeviceStatus {
     WAIT_CONNECTING = 'waitConnecting',
@@ -11,29 +11,65 @@ export enum EnumDeviceType {
     WIFI = 'wifi',
 }
 
-export type DeviceRecord = {
-    id: string,
-    type: EnumDeviceType,
-    name: string | null,
-    raw: any,
+export type DeviceRaw = {
+    id: string
+    type?: string
+    model?: string
+    [key: string]: unknown
+}
 
-    status?: any,
-    runtime?: any,
-    screenshot?: string | null,
-    setting?: {
-        dimWhenMirror?: any,
-        alwaysTop?: any,
-        mirrorSound?: any,
-        previewImage?: any,
-        videoBitRate?: any,
-        maxFps?: any,
-        scrcpyArgs?: any,
-    },
+export type DeviceSetting = {
+    autoMirror?: string
+    dimWhenMirror?: string
+    alwaysTop?: string
+    mirrorSound?: string
+    previewImage?: string
+    videoBitRate?: string
+    maxFps?: string
+    scrcpyArgs?: string
+    panelShow?: string
+    powerSaveBlock?: string
+    windowBorderless?: string
+    appPackage?: string
+    appDisplaySize?: string
+    appDisplayDpi?: string
+}
+
+export type ShellController = {
+    stop: () => void
+    send: (data: string) => void
+    result: () => Promise<string>
+}
+
+export type DeviceRecord = {
+    id: string
+    type: EnumDeviceType
+    name: string | null
+    raw: DeviceRaw
+
+    status?: any
+    runtime?: any
+    screenshot?: string | null
+    setting?: DeviceSetting
+}
+
+export type AppMirror = {
+    package: string
+    name: string
+    controller: ShellController | null
 }
 
 export type DeviceRuntime = {
-    status: EnumDeviceStatus,
-    mirrorController: any,
-    screenBrightness?: number,
-    previewImage: any,
+    status: EnumDeviceStatus
+    mirrorController: ShellController | null
+    // 应用投屏支持同时投屏多个应用，每个应用对应一个独立的 scrcpy 虚拟屏窗口
+    appMirrors: AppMirror[]
+    screenBrightness?: number
+    previewImage: string
+}
+
+export type DeviceGroup = {
+    id: string
+    name: string
+    deviceIds: string[]
 }

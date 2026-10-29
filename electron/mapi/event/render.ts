@@ -1,8 +1,6 @@
-import {ipcRenderer} from "electron";
+import {ipcRenderer} from 'electron'
 
-const init = () => {
-
-}
+const init = () => {}
 
 const send = (name: string, type: string, data: any = {}) => {
     return ipcRenderer.invoke('event:send', name, type, data).then()

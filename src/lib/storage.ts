@@ -1,5 +1,12 @@
 export const StorageUtil = {
     /**
+     * @Util 删除
+     * @param key String 键
+     */
+    remove: function (key: string): void {
+        window.localStorage.removeItem(key)
+    },
+    /**
      * @Util 存储数据
      * @param key String 键
      * @param value String|Object|Array 值
@@ -19,9 +26,8 @@ export const StorageUtil = {
             return defaultValue
         }
         try {
-            return JSON.parse(value);
-        } catch (e) {
-        }
+            return JSON.parse(value)
+        } catch (e) {}
         return defaultValue
     },
     /**
@@ -42,8 +48,7 @@ export const StorageUtil = {
                 return defaultValue
             }
             return value
-        } catch (e) {
-        }
+        } catch (e) {}
         return defaultValue
     },
     /**
@@ -63,13 +68,11 @@ export const StorageUtil = {
             if (null === value) {
                 return defaultValue
             }
-            if (!Array.isArray(value) && (typeof value === 'object')) {
+            if (!Array.isArray(value) && typeof value === 'object') {
                 return value
             }
             return defaultValue
-        } catch (e) {
-        }
+        } catch (e) {}
         return defaultValue
     },
 }
-

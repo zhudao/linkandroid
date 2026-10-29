@@ -10,6 +10,5 @@ const props = defineProps<{
 
 <style lang="less" scoped>
 .pb-html-viewer {
-
 }
 </style>

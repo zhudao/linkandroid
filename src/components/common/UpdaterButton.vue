@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import {onMounted, ref} from "vue";
-import {AppConfig} from "../../config";
-import {doCheckForUpdate} from "./util";
+import {onMounted, ref} from 'vue'
+import {AppConfig} from '../../config'
+import {doCheckForUpdate} from './util'
 
 const updaterCheckLoading = ref(false)
 const checkAtLaunch = ref<'yes' | 'no'>('no')
@@ -28,17 +28,17 @@ const doVersionCheck = async () => {
 
 <template>
     <div class="inline-flex items-center">
-        <a-button v-if="!!AppConfig.updaterUrl"
-                  size="mini"
-                  class="mr-2"
-                  :loading="updaterCheckLoading"
-                  @click="doVersionCheck()">
-            {{ $t('检测更新') }}
+        <a-button
+            v-if="!!AppConfig.updaterUrl"
+            size="mini"
+            class="mr-2"
+            :loading="updaterCheckLoading"
+            @click="doVersionCheck()"
+        >
+            {{ $t('update.check') }}
         </a-button>
-        <a-checkbox
-            :model-value="checkAtLaunch==='yes'"
-            @change="onCheckAtLaunchChange as any">
-            {{ $t('自动检测更新') }}
+        <a-checkbox :model-value="checkAtLaunch === 'yes'" @change="onCheckAtLaunchChange as any">
+            {{ $t('setting.autoUpdate') }}
         </a-checkbox>
     </div>
 </template>

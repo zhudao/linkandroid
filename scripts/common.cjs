@@ -29,7 +29,7 @@ function calcSha256File(filePath) {
 const platformName = () => {
     switch (process.platform) {
         case "darwin":
-            return "mac";
+            return "osx";
         case "win32":
             return "win";
         case "linux":
@@ -41,7 +41,7 @@ const platformName = () => {
 const platformArch = () => {
     switch (process.arch) {
         case "x64":
-            return "x64";
+            return "x86";
         case "arm64":
             return "arm64";
     }
@@ -73,6 +73,49 @@ const listFiles = (dir, recursive, regex) => {
     return list;
 }
 
+const {execSync} = require('node:child_process');
+
+const copy = (src, dest, print) => {
+    print = print || false
+    if (!fs.existsSync(src)) {
+        console.warn(`Source path does not exist: ${src}`);
+        return;
+    }
+    if (fs.statSync(src).isDirectory()) {
+        fs.mkdirSync(dest, {recursive: true});
+        const files = fs.readdirSync(src);
+        for (const file of files) {
+            copy(join(src, file), join(dest, file));
+        }
+    } else {
+        if (print) {
+            console.log(`Copying file from ${src} to ${dest}`);
+        }
+        try { fs.unlinkSync(dest); } catch (e) {}
+        const srcStat = fs.statSync(src);
+        // macOS 26+ com.apple.provenance xattr 导致 cp 失败，先用 Node.js 直接读写（不保留 xattr）
+        try {
+            fs.writeFileSync(dest, fs.readFileSync(src));
+        } catch (writeErr) {
+            // 如果直接写入也失败（macOS 沙箱限制），尝试 shell cp -f
+            execSync(`/bin/cp -f '${src}' '${dest}'`);
+        }
+        try { fs.chmodSync(dest, srcStat.mode); } catch (e) {}
+    }
+}
+
+const pathResolve = (...args)=>{
+    return resolve(...args)
+}
+
+const exists = (p) => {
+    try {
+        return fs.existsSync(p);
+    } catch (e) {
+        return false;
+    }
+}
+
 async function calcSha256() {
     console.log('calcSha256.start')
     const results = []
@@ -98,5 +141,8 @@ module.exports = {
     platformName,
     platformArch,
     listFiles,
+    copy,
+    pathResolve,
+    exists,
     calcSha256,
 }

@@ -1,10 +1,10 @@
 export const AudioUtil = {
     audioBufferEmpty() {
-        const emptyLength = 1024 * 100;
+        const emptyLength = 1024 * 100
         const buffer = new AudioBuffer({
             length: emptyLength,
             numberOfChannels: 2,
-            sampleRate: 8000
+            sampleRate: 8000,
         })
         for (let channel = 0; channel < 2; channel++) {
             const data = buffer.getChannelData(channel)
@@ -24,7 +24,7 @@ export const AudioUtil = {
         const targetBuffer = new AudioBuffer({
             length: targetLength,
             numberOfChannels: numChannels,
-            sampleRate: sampleRate
+            sampleRate: sampleRate,
         })
         for (let channel = 0; channel < numChannels; channel++) {
             const sourceChannel = buffer.getChannelData(channel)
@@ -40,17 +40,17 @@ export const AudioUtil = {
         const numChannels = buffer.numberOfChannels
         const sampleRate = buffer.sampleRate
         const length = buffer.length
-        const targetLength = Math.floor(length * targetSampleRate / sampleRate)
+        const targetLength = Math.floor((length * targetSampleRate) / sampleRate)
         const targetBuffer = new AudioBuffer({
             length: targetLength,
             numberOfChannels: targetChannelNum,
-            sampleRate: targetSampleRate
+            sampleRate: targetSampleRate,
         })
         for (let channel = 0; channel < targetChannelNum; channel++) {
             const sourceChannel = buffer.getChannelData(channel % numChannels)
             const targetChannel = targetBuffer.getChannelData(channel)
             for (let i = 0; i < targetLength; i++) {
-                const sourceIndex = Math.floor(i * sampleRate / targetSampleRate)
+                const sourceIndex = Math.floor((i * sampleRate) / targetSampleRate)
                 targetChannel[i] = sourceChannel[sourceIndex]
             }
         }
@@ -78,16 +78,19 @@ export const AudioUtil = {
         view.setUint16(34, bitDepth, true)
         view.setUint32(36, 1635017060, true)
         view.setUint32(40, dataSize, true)
-        let offset = 44;
+        let offset = 44
         for (let i = 0; i < buffer.length; i++) {
             for (let channel = 0; channel < numChannels; channel++) {
-                const sample = buffer.getChannelData(channel)[i];
-                const intSample = Math.max(-1, Math.min(1, sample));
-                view.setInt16(offset, Math.round(intSample < 0 ? intSample * 0x8000 : intSample * 0x7FFF), true);
-                offset += 2;
+                const sample = buffer.getChannelData(channel)[i]
+                const intSample = Math.max(-1, Math.min(1, sample))
+                view.setInt16(offset, Math.round(intSample < 0 ? intSample * 0x8000 : intSample * 0x7fff), true)
+                offset += 2
             }
         }
         return new Uint8Array(view.buffer)
+    },
+    audioBufferDuration(buffer: AudioBuffer) {
+        return buffer.duration
     },
     audioBufferToWavBlob(buffer: AudioBuffer) {
         return new Blob([this.audioBufferToWav(buffer)], {type: 'audio/wav'})
@@ -105,12 +108,12 @@ export const AudioUtil = {
     },
     parseAudioFile(file: File) {
         return new Promise<{
-            duration: number,
-            sampleRate: number,
+            duration: number
+            sampleRate: number
             numberOfChannels: number
         }>((resolve, reject) => {
             this.fileToAudioBuffer(file)
-                .then(buffer => {
+                .then((buffer) => {
                     resolve({
                         duration: buffer.duration,
                         sampleRate: buffer.sampleRate,
@@ -119,5 +122,5 @@ export const AudioUtil = {
                 })
                 .catch(reject)
         })
-    }
+    },
 }

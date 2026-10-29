@@ -1,6 +1,5 @@
 import {createRouter, createWebHashHistory} from 'vue-router'
 
-
 const routes = [
     {
         path: '/',
@@ -9,26 +8,31 @@ const routes = [
             {path: '', component: () => import('./pages/Home.vue')},
             {path: 'home', component: () => import('./pages/Home.vue')},
             {path: 'device', component: () => import('./pages/Device.vue')},
+            {path: 'task', component: () => import('./pages/Task.vue')},
             {path: 'setting', component: () => import('./pages/Setting.vue')},
-        ]
+        ],
     },
     {
         path: '/',
         component: () => import('./layouts/Raw.vue'),
-        children: [
-        ]
+        children: [],
+    },
+    // 404 兜底：匹配所有未定义路径，渲染 NotFound 页面并在测试模式下输出 console.error
+    {
+        path: '/:pathMatch(.*)*',
+        component: () => import('./pages/NotFound.vue'),
     },
 ]
 
 const router = createRouter({
     history: createWebHashHistory(),
-    routes
+    routes,
 })
 
 // watch router change
 router.beforeEach((to, from, next) => {
     window.$mapi?.statistics?.tick('visit', {
-        path: to.path
+        path: to.path,
     })
     next()
 })

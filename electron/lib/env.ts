@@ -1,7 +1,9 @@
-import {resolve} from "node:path";
-import os from "os";
-import {execSync} from "child_process";
-import {Log} from "../mapi/log";
+import {execSync} from 'child_process'
+import {resolve} from 'node:path'
+import fs from 'node:fs'
+import os from 'os'
+import {Log} from '../mapi/log'
+import FileIndex from '../mapi/file'
 
 export const isPackaged = ['true'].includes(process.env.IS_PACKAGED)
 
@@ -35,12 +37,10 @@ const tryFirst = (functionList: (() => any)[]) => {
     for (const fun of functionList) {
         try {
             return fun()
-        } catch (e) {
-        }
+        } catch (e) {}
     }
     return null
 }
-
 
 let platformVersionCache: string | null = null
 export const platformVersion = () => {
@@ -48,11 +48,19 @@ export const platformVersion = () => {
         const functionList: any[] = []
         if (isWin) {
             functionList.push(() => execSync('wmic os get Version').toString().split('\n')[1].trim())
-            functionList.push(() => execSync('powershell -command "(Get-ItemProperty \'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\').ReleaseId"').toString().trim())
+            functionList.push(() =>
+                execSync(
+                    'powershell -command "(Get-ItemProperty \'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\').ReleaseId"',
+                )
+                    .toString()
+                    .trim(),
+            )
         } else if (isMac) {
             functionList.push(() => execSync('sw_vers -productVersion').toString().trim())
         } else if (isLinux) {
-            functionList.push(() => execSync('cat /etc/os-release | grep VERSION_ID').toString().split('=')[1].trim().replace(/"/g, ''))
+            functionList.push(() =>
+                execSync('cat /etc/os-release | grep VERSION_ID').toString().split('=')[1].trim().replace(/"/g, ''),
+            )
         }
         platformVersionCache = tryFirst(functionList)
         if (!platformVersionCache) {
@@ -79,9 +87,13 @@ export const platformUUID = () => {
         const functionList: any[] = []
         if (isWin) {
             functionList.push(() => execSync('wmic csproduct get UUID').toString().split('\n')[1].trim())
-            functionList.push(() => execSync('powershell -command "(Get-WmiObject Win32_ComputerSystemProduct).UUID"').toString().trim())
+            functionList.push(() =>
+                execSync('powershell -command "(Get-WmiObject Win32_ComputerSystemProduct).UUID"').toString().trim(),
+            )
         } else if (isMac) {
-            functionList.push(() => execSync('system_profiler SPHardwareDataType | grep UUID').toString().split(': ')[1].trim())
+            functionList.push(() =>
+                execSync('system_profiler SPHardwareDataType | grep UUID').toString().split(': ')[1].trim(),
+            )
         } else if (isLinux) {
             functionList.push(() => execSync('cat /var/lib/dbus/machine-id').toString().trim().toUpperCase())
         }
@@ -94,16 +106,60 @@ export const platformUUID = () => {
     return platformUUIDCache
 }
 
-export const buildResolve = (value: string) => {
+export const buildResolve = (value: string): string => {
     return resolve(`electron/resources/build/${value}`)
 }
 
-export const binResolve = (value: string) => {
+export const binResolve = (value: string): string => {
     return resolve(process.resourcesPath, 'bin', value)
 }
 
-export const extraResolve = (filePath: string) => {
+export const extraResolve = (filePath: string): string => {
     const basePath = isPackaged ? process.resourcesPath : 'electron/resources'
     return resolve(basePath, 'extra', filePath)
 }
 
+export const extraResolveWithPlatform = (filePath: string): string => {
+    const dir = [platformName(), platformArch()].join('-')
+    const p = [dir, filePath].join('/')
+    return extraResolve(p)
+}
+
+/**
+ * Dev mode: resolve a file path from the sibling `linkandroid-scrcpy-pro` project.
+ * Returns `null` if not in dev mode, the directory doesn't exist, or the file doesn't exist.
+ *
+ * Usage:
+ *   const adb = devProResolve('app/deps/work/install/adb-macos/adb')
+ *   if (adb) { ... }
+ */
+export const devProResolve = (relativePath: string): string | null => {
+    if (!isDev) return null
+    const proDir = resolve('../linkandroid-scrcpy-pro')
+    if (!fs.existsSync(proDir)) return null
+    const fullPath = resolve(proDir, relativePath)
+    return fs.existsSync(fullPath) ? fullPath : null
+}
+
+/**
+ * Resolve ADB binary path: try pro project first in dev mode, fall back to extra resources.
+ * Throws if neither exists.
+ */
+export const resolveAdbBin = (): string => {
+    return devProResolve('app/deps/work/install/adb-macos/adb') || extraResolveBin('scrcpy/adb')
+}
+
+export const extraResolveBin = (filePath: string): string => {
+    if (isWin) {
+        if (!filePath.endsWith('.exe')) {
+            filePath += '.exe'
+        }
+    }
+    const dir = [platformName(), platformArch()].join('-')
+    const p = [dir, filePath].join('/')
+    const binaryPath = extraResolve(p)
+    if (!fs.existsSync(binaryPath)) {
+        throw new Error(`Binary file not found: ${binaryPath}`)
+    }
+    return binaryPath
+}

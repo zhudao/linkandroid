@@ -15,7 +15,3 @@ process.env.DESKTOP_PATH = app.getPath('desktop')
 process.env.CWD = process.cwd()
 
 export const isDummy = false
-
-
-
-

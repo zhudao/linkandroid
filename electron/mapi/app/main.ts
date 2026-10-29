@@ -1,20 +1,22 @@
-import {app, BrowserWindow, clipboard, ipcMain, nativeImage, nativeTheme, screen, shell} from "electron";
-import {WindowConfig} from "../../config/window";
-import {AppRuntime} from "../env";
-import {isDev, isMac, platformArch, platformName, platformUUID, platformVersion} from "../../lib/env";
-import {AppPosition} from "./lib/position";
-import {Events} from "../event/main";
-import {ConfigMain} from "../config/main";
-import {CommonConfig} from "../../config/common";
-import {preloadDefault, rendererDistPath} from "../../lib/env-main";
-import {Page} from "../../page";
-import {makeToast} from "./toast";
-import {SetupMain} from "./setup";
-import {Files} from "../file/main";
-import {makeLoading} from "./loading";
-import {AppConfig} from "../../../src/config";
-import Apps from "./index";
-
+import {app, BrowserWindow, clipboard, ipcMain, nativeImage, nativeTheme, screen, shell} from 'electron'
+import {execSync} from 'node:child_process'
+import {existsSync} from 'node:fs'
+import {resolve} from 'node:path'
+import {AppConfig} from '../../../src/config'
+import {CommonConfig} from '../../config/common'
+import {WindowConfig} from '../../config/window'
+import {isDev, isMac, platformArch, platformName, platformUUID, platformVersion} from '../../lib/env'
+import {preloadDefault, rendererDistPath} from '../../lib/env-main'
+import {Page} from '../../page'
+import {ConfigMain} from '../config/main'
+import {AppRuntime} from '../env'
+import {Events} from '../event/main'
+import {Files} from '../file/main'
+import Apps from './index'
+import {AppPosition} from './lib/position'
+import {makeLoading} from './loading'
+import {SetupMain} from './setup'
+import {makeToast} from './toast'
 
 const getWindowByName = (name?: string) => {
     if (!name || 'main' === name) {
@@ -24,15 +26,14 @@ const getWindowByName = (name?: string) => {
 }
 
 const getCurrentWindow = (window, e) => {
-    let originWindow = BrowserWindow.fromWebContents(e.sender);
+    let originWindow = BrowserWindow.fromWebContents(e.sender)
     // if (originWindow !== window) originWindow = detachInstance.getWindow();
-    return originWindow;
+    return originWindow
 }
-
 
 const quit = () => {
     // @ts-ignore
-    app.quitForce = true;
+    app.quitForce = true
     app.quit()
 }
 
@@ -70,10 +71,15 @@ const windowMax = (name?: string) => {
     }
 }
 
-const windowSetSize = (name: string | null, width: number, height: number, option?: {
-    includeMinimumSize: boolean,
-    center: boolean
-}) => {
+const windowSetSize = (
+    name: string | null,
+    width: number,
+    height: number,
+    option?: {
+        includeMinimumSize: boolean
+        center: boolean
+    },
+) => {
     width = parseInt(String(width))
     height = parseInt(String(height))
     // console.log('windowSetSize', name, width, height, option)
@@ -81,10 +87,13 @@ const windowSetSize = (name: string | null, width: number, height: number, optio
     if (!win) {
         return
     }
-    option = Object.assign({
-        includeMinimumSize: true,
-        center: true
-    }, option)
+    option = Object.assign(
+        {
+            includeMinimumSize: true,
+            center: true,
+        },
+        option,
+    )
     if (option.includeMinimumSize) {
         win.setMinimumSize(width, height)
     }
@@ -94,8 +103,14 @@ const windowSetSize = (name: string | null, width: number, height: number, optio
     }
 }
 
-ipcMain.handle('app:openExternalWeb', (event, url: string) => {
+ipcMain.handle('app:openExternal', (event, url: string) => {
     return shell.openExternal(url)
+})
+ipcMain.handle('app:openPath', (event, url: string) => {
+    return shell.openPath(url)
+})
+ipcMain.handle('app:showItemInFolder', (event, url: string) => {
+    return shell.showItemInFolder(url)
 })
 
 ipcMain.handle('app:getPreload', (event) => {
@@ -112,22 +127,34 @@ ipcMain.handle('window:min', (event, name: string) => {
 ipcMain.handle('window:max', (event, name: string) => {
     windowMax(name)
 })
-ipcMain.handle('window:setSize', (event, name: string | null, width: number, height: number, option?: {
-    includeMinimumSize: boolean,
-    center: boolean
-}) => {
-    windowSetSize(name, width, height, option)
-})
+ipcMain.handle(
+    'window:setSize',
+    (
+        event,
+        name: string | null,
+        width: number,
+        height: number,
+        option?: {
+            includeMinimumSize: boolean
+            center: boolean
+        },
+    ) => {
+        windowSetSize(name, width, height, option)
+    },
+)
 
 ipcMain.handle('window:close', (event, name: string) => {
     getWindowByName(name)?.close()
 })
 
-const windowOpen = async (name: string, option?: {
-    singleton?: boolean,
-    parent?: BrowserWindow,
-    [key: string]: any
-}) => {
+const windowOpen = async (
+    name: string,
+    option?: {
+        singleton?: boolean
+        parent?: BrowserWindow
+        [key: string]: any
+    },
+) => {
     name = name || 'main'
     return Page.open(name, option)
 }
@@ -143,19 +170,25 @@ ipcMain.handle('window:hide', (event, name: string) => {
     }
 })
 
-ipcMain.handle('window:move', (event, name: string | null, data: {
-    mouseX: number,
-    mouseY: number,
-    width: number,
-    height: number
-}) => {
-    const {x, y} = screen.getCursorScreenPoint();
-    const originWindow = getWindowByName(name);
-    if (!originWindow) return;
-    originWindow.setBounds({x: x - data.mouseX, y: y - data.mouseY, width: data.width, height: data.height});
-    AppPosition.set(name, x - data.mouseX, y - data.mouseY);
-})
-
+ipcMain.handle(
+    'window:move',
+    (
+        event,
+        name: string | null,
+        data: {
+            mouseX: number
+            mouseY: number
+            width: number
+            height: number
+        },
+    ) => {
+        const {x, y} = screen.getCursorScreenPoint()
+        const originWindow = getWindowByName(name)
+        if (!originWindow) return
+        originWindow.setBounds({x: x - data.mouseX, y: y - data.mouseY, width: data.width, height: data.height})
+        AppPosition.set(name, x - data.mouseX, y - data.mouseY)
+    },
+)
 
 const getClipboardText = () => {
     return clipboard.readText('clipboard')
@@ -193,14 +226,14 @@ ipcMain.handle('app:setClipboardImage', (event, image: string) => {
 
 const isDarkMode = () => {
     if (!CommonConfig.darkModeEnable) {
-        return false;
+        return false
     }
     return nativeTheme.shouldUseDarkColors
 }
 
 const shouldDarkMode = async () => {
     if (!CommonConfig.darkModeEnable) {
-        return false;
+        return false
     }
     const darkMode = (await ConfigMain.get('darkMode')) || 'auto'
     if ('dark' === darkMode) {
@@ -222,6 +255,9 @@ const defaultDarkModeBackgroundColor = async () => {
 
 nativeTheme.on('updated', () => {
     Events.broadcast('DarkModeChange', {isDarkMode: isDarkMode()})
+    AppsMain.defaultDarkModeBackgroundColor().then((color) => {
+        AppRuntime.mainWindow.setBackgroundColor(color)
+    })
 })
 
 ipcMain.handle('app:isDarkMode', () => {
@@ -229,8 +265,8 @@ ipcMain.handle('app:isDarkMode', () => {
 })
 
 const getCurrentScreenDisplay = () => {
-    const screenPoint = screen.getCursorScreenPoint();
-    const display = screen.getDisplayNearestPoint(screenPoint);
+    const screenPoint = screen.getCursorScreenPoint()
+    const display = screen.getDisplayNearestPoint(screenPoint)
     return {
         bounds: display.bounds,
         workArea: display.workArea,
@@ -240,7 +276,7 @@ const getCurrentScreenDisplay = () => {
 const calcPositionInCurrentDisplay = (
     position: 'center' | 'left-top' | 'right-top' | 'left-bottom' | 'right-bottom',
     width: number,
-    height: number
+    height: number,
 ) => {
     const {bounds, workArea} = getCurrentScreenDisplay()
     let x = 0
@@ -273,10 +309,13 @@ const calcPositionInCurrentDisplay = (
     }
 }
 
-const toast = (msg: string, options?: {
-    duration?: number,
-    status?: 'success' | 'error' | 'info'
-}) => {
+const toast = (
+    msg: string,
+    options?: {
+        duration?: number
+        status?: 'success' | 'error' | 'info'
+    },
+) => {
     return makeToast(msg, options)
 }
 
@@ -284,12 +323,15 @@ ipcMain.handle('app:toast', (event, msg: string, option?: any) => {
     return toast(msg, option)
 })
 
-const loading = (msg: string, options?: {
-    timeout?: number,
-    percentAuto?: boolean,
-    percentTotalSeconds?: number,
-}): {
-    close: () => void,
+const loading = (
+    msg: string,
+    options?: {
+        timeout?: number
+        percentAuto?: boolean
+        percentTotalSeconds?: number
+    },
+): {
+    close: () => void
     percent: (value: number) => void
 } => {
     return makeLoading(msg, options)
@@ -307,7 +349,6 @@ ipcMain.handle('app:setupOpen', async (event, name: string) => {
     return SetupMain.open(name)
 })
 
-
 const setupIsOk = async () => {
     return SetupMain.isOk()
 }
@@ -319,11 +360,11 @@ ipcMain.handle('app:setupIsOk', async () => {
 const getBuildInfo = async () => {
     if (isDev) {
         return {
-            buildId: 'Development'
+            buildId: 'Development',
         }
     }
     const json = await Files.read(rendererDistPath('build.json'), {
-        isFullPath: true
+        isDataPath: false,
     })
     return JSON.parse(json)
 }
@@ -366,8 +407,73 @@ ipcMain.handle('app:getAutoLaunch', async (event, options?: {}) => {
     return getAutoLaunch(options)
 })
 
+/**
+ * Ensure _aienv Python virtual environment exists.
+ * Checks if _aienv/bin/python exists; if not, runs the platform init script.
+ * Used by AI phone preview (TaskRuntime.ts) on first refresh.
+ */
+ipcMain.handle('app:ensureAienv', async () => {
+    const basePath = isDev ? process.env.APP_ROOT || resolve(__dirname, '../../..') : process.resourcesPath
+    const plat = platformName()
+
+    let pythonRel: string
+    let scriptName: string
+    if (plat === 'osx') {
+        pythonRel = '_aienv/bin/python'
+        scriptName = 'init-osx.sh'
+    } else if (plat === 'linux') {
+        pythonRel = '_aienv/bin/python'
+        scriptName = 'init-linux.sh'
+    } else if (plat === 'win') {
+        pythonRel = '_aienv/Scripts/python.exe'
+        scriptName = 'init-windows.sh'
+    } else {
+        return {ok: false, error: `不支持的平台: ${plat}`}
+    }
+
+    const pythonPath = resolve(basePath, 'env/task', pythonRel)
+    if (existsSync(pythonPath)) {
+        // Verify Python binary is actually runnable (not a broken framework build)
+        try {
+            execSync(`"${pythonPath}" --version`, {timeout: 5000, stdio: 'pipe'})
+        } catch (e: any) {
+            const stderr = (e.stderr && e.stderr.toString().trim()) || e.message || 'unknown error'
+            // Detect framework dependency issue
+            if (stderr.includes('Library not loaded') && stderr.includes('Python.framework')) {
+                return {
+                    ok: false,
+                    error: 'Python 运行环境框架缺失（Python.framework 未找到），请重新安装应用',
+                }
+            }
+            return {ok: false, error: `Python 运行环境异常: ${stderr}`}
+        }
+        return {ok: true}
+    }
+
+    // In packaged mode, the app bundle is read-only and the Python env must be pre-bundled.
+    // If _aienv is missing, the build is corrupted — don't attempt to run the init script.
+    if (!isDev) {
+        return {ok: false, error: 'Python 运行环境未找到，应用程序已损坏，请重新安装'}
+    }
+
+    const scriptPath = resolve(basePath, 'env/task', scriptName)
+    if (!existsSync(scriptPath)) {
+        return {ok: false, error: `初始化脚本未找到: ${scriptPath}`}
+    }
+
+    try {
+        const cmd = plat === 'win' ? `"${scriptPath}"` : `bash "${scriptPath}"`
+        const taskDir = resolve(basePath, 'env/task')
+        await Apps.shell(cmd, {cwd: taskDir})
+        const ok = existsSync(pythonPath)
+        return {ok, error: ok ? undefined : 'Python 环境初始化后仍不可用，请尝试手动运行 env/task/init-*.sh'}
+    } catch (e: any) {
+        return {ok: false, error: `初始化 Python 环境失败: ${e.message}`}
+    }
+})
+
 export default {
-    quit
+    quit,
 }
 
 export const AppsMain = {

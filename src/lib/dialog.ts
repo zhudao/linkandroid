@@ -1,19 +1,20 @@
-import {Message, MessageReturn, Modal} from '@arco-design/web-vue';
-import Prompt from "./components/Prompt.vue";
-import {h} from "vue";
-import {i18n, t} from "../lang";
+import {Message, MessageReturn, Modal} from '@arco-design/web-vue'
+import Prompt from './components/Prompt.vue'
+import {h} from 'vue'
+import {i18n, t} from '../lang'
 
 let loadingLayers: MessageReturn[] = []
 
 export const Dialog = {
     tipSuccess: (msg: string) => {
-        Message.success(msg);
+        Message.success(msg)
     },
     tipError: (msg: string) => {
-        Message.error(msg);
+        if (window.__TEST_MODE__) console.warn('[dialog:tipError]', msg)
+        Message.error(msg)
     },
     confirm: (content: string, title: string | null = null): Promise<void> => {
-        title = title || t('提示')
+        title = title || t('common.tip')
         return new Promise((resolve, reject) => {
             Modal.confirm({
                 title,
@@ -22,19 +23,19 @@ export const Dialog = {
                 simple: false,
                 width: '25rem',
                 modalClass: 'arco-modal-confirm',
-                okText: t('确定'),
-                cancelText: t('取消'),
+                okText: t('common.confirm'),
+                cancelText: t('common.cancel'),
                 onOk: () => {
-                    resolve();
+                    resolve()
                 },
                 onCancel: () => {
                     // reject();
-                }
-            });
-        });
+                },
+            })
+        })
     },
     alertSuccess: (content: string, title: string | null = null): Promise<void> => {
-        title = title || t('提示')
+        title = title || t('common.tip')
         return new Promise((resolve) => {
             Modal.confirm({
                 title,
@@ -42,13 +43,14 @@ export const Dialog = {
                 simple: false,
                 width: '25rem',
                 onOk: () => {
-                    resolve();
-                }
-            });
-        });
+                    resolve()
+                },
+            })
+        })
     },
     alertError: (content: string, title: string | null = null): Promise<void> => {
-        title = title || t('提示')
+        if (window.__TEST_MODE__) console.warn('[dialog:alertError]', content)
+        title = title || t('common.tip')
         return new Promise((resolve) => {
             Modal.confirm({
                 title,
@@ -56,22 +58,24 @@ export const Dialog = {
                 simple: false,
                 width: '25rem',
                 onOk: () => {
-                    resolve();
-                }
-            });
-        });
+                    resolve()
+                },
+            })
+        })
     },
     loadingOn: (content: string | null = null) => {
-        content = content || t('加载中...')
+        content = content || t('common.loadingDots')
         const loading = Message.loading({
             content,
-            duration: 0
-        });
+            duration: 0,
+        })
         loadingLayers.push(loading)
     },
     loadingUpdate: (content: string) => {
         if (loadingLayers.length > 0) {
-            const contentContainer = document.querySelector('.arco-message-list .arco-message-loading .arco-message-content')
+            const contentContainer = document.querySelector(
+                '.arco-message-list .arco-message-loading .arco-message-content',
+            )
             if (contentContainer) {
                 contentContainer.innerHTML = content
             }
@@ -95,14 +99,14 @@ export const Dialog = {
                         value: defaultValue,
                         onChange: (value: string) => {
                             inputValue = value
-                        }
+                        },
                     })
                 },
                 width: '25rem',
                 onOk: () => {
-                    resolve(inputValue);
-                }
-            });
-        });
-    }
+                    resolve(inputValue)
+                },
+            })
+        })
+    },
 }

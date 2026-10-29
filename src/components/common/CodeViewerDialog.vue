@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import {nextTick, onMounted, ref} from "vue";
-import {EditorView, keymap, lineNumbers} from "@codemirror/view";
-import {dracula} from "@uiw/codemirror-theme-dracula";
-import {quietlight} from "@uiw/codemirror-theme-quietlight";
-import {python} from "@codemirror/lang-python";
-import {defaultKeymap} from "@codemirror/commands";
-import {EditorState} from "@codemirror/state";
+import {nextTick, onMounted, ref} from 'vue'
+import {EditorView, keymap, lineNumbers} from '@codemirror/view'
+import {dracula} from '@uiw/codemirror-theme-dracula'
+import {quietlight} from '@uiw/codemirror-theme-quietlight'
+import {python} from '@codemirror/lang-python'
+import {defaultKeymap} from '@codemirror/commands'
+import {EditorState} from '@codemirror/state'
 
 const visible = ref(false)
 const codeEditorDom = ref<HTMLElement>()
@@ -44,29 +44,26 @@ const setEditorContent = (code: string) => {
         return
     }
     const transaction = editor.state.update({
-        changes: {from: 0, to: editor.state.doc.length, insert: code}
+        changes: {from: 0, to: editor.state.doc.length, insert: code},
     })
     editor.dispatch(transaction)
 }
 
-onMounted(() => {
-
-})
+onMounted(() => {})
 
 defineExpose({
-    show
+    show,
 })
 </script>
 
 <template>
-    <a-modal v-model:visible="visible" :footer="false" width="80vw">
+    <a-modal v-model:visible="visible" :footer="false" width="min(1000px, 95vw)">
         <template #title>
-            {{ $t('代码查看') }}
+            {{ $t('common.viewCode') }}
         </template>
         <div>
             <div class="w-full h-96">
-                <div ref="codeEditorDom"
-                     class=""></div>
+                <div ref="codeEditorDom" class=""></div>
             </div>
         </div>
     </a-modal>
@@ -78,4 +75,3 @@ defineExpose({
     font-size: 1.2rem;
 }
 </style>
-

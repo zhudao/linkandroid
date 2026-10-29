@@ -1,8 +1,7 @@
-import {ipcRenderer} from "electron";
-import AppsRender from "../app/render";
+import {ipcRenderer} from 'electron'
 
 const open = async (option: any) => {
-    await AppsRender.windowOpen('user', option)
+    return ipcRenderer.invoke('user:open', option)
 }
 
 const get = async (): Promise<any> => {
@@ -29,8 +28,8 @@ const apiPost = async (
     url: string,
     data: Record<string, any>,
     option?: {
-        throwException?: boolean,
-    }
+        throwException?: boolean
+    },
 ) => {
     return ipcRenderer.invoke('user:apiPost', url, data, option)
 }

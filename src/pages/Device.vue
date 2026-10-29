@@ -1,279 +1,417 @@
 <script setup lang="ts">
-import {useDeviceStore} from "../store/modules/device";
-import {DeviceRecord, EnumDeviceStatus, EnumDeviceType} from "../types/Device";
-import DeviceStatus from "../components/Device/DeviceStatus.vue";
-import {Dialog} from "../lib/dialog";
-import {mapError} from "../lib/error";
-import InputInlineEditor from "../components/common/InputInlineEditor.vue";
-import DeviceSettingDialog from "../components/Device/DeviceSettingDialog.vue";
-import {computed, ref} from "vue";
-import {t} from "../lang";
-import DeviceFileManagerDialog from "../components/Device/DeviceFileManagerDialog.vue";
-import DeviceConnectWifiDialog from "../components/Device/DeviceConnectWifiDialog.vue";
-import DeviceShellDialog from "../components/Device/DeviceShellDialog.vue";
-import DeviceAdbShellDialog from "../components/Device/DeviceAdbShellDialog.vue";
-import DeviceActionApp from "../components/Device/DeviceActionApp.vue";
-import DeviceActionRecord from "../components/Device/DeviceActionRecord.vue";
-import DeviceActionScreenshot from "../components/Device/DeviceActionScreenshot.vue";
-import {AppConfig} from "../config";
-import DeviceActionWifiOn from "../components/Device/DeviceActionWifiOn.vue";
-import DeviceActionMirrorCamera from "../components/Device/DeviceActionMirrorCamera.vue";
-import DeviceActionMirrorOTG from "../components/Device/DeviceActionMirrorOTG.vue";
-import DeviceActionMirror from "../components/Device/DeviceActionMirror.vue";
-import DeviceActionDisconnect from "../components/Device/DeviceActionDisconnect.vue";
-import DeviceType from "../components/Device/DeviceType.vue";
-import DeviceActionConnect from "../components/Device/DeviceActionConnect.vue";
-import DeviceActionWifiOff from "../components/Device/DeviceActionWifiOff.vue";
-import DeviceDefaultSettingDialog from "../components/Device/DeviceDefaultSettingDialog.vue";
+import {computed, onMounted, onUnmounted, ref} from 'vue'
+import ListerTop from '../components/common/ListerTop.vue'
+import {t} from '../lang'
+import {Dialog} from '../lib/dialog'
+import {mapError} from '../lib/error'
+import {parseDisplayOverride, parseIPPort} from '../lib/linkandroid'
+import {useDeviceStore} from '../store/modules/device'
+import {EnumDeviceStatus, EnumDeviceType} from '../types/Device'
+import {testActionSet, testActionUnset} from '../utils/test'
+import DeviceAdbShellDialog from './Device/DeviceAdbShellDialog.vue'
+import DeviceCameraDialog from './Device/DeviceCameraDialog.vue'
+import DeviceMirrorAppDialog from './Device/DeviceMirrorAppDialog.vue'
+import DeviceConnectWifiDialog from './Device/DeviceConnectWifiDialog.vue'
+import DeviceDefaultSettingDialog from './Device/DeviceDefaultSettingDialog.vue'
+import DeviceEmpty from './Device/DeviceEmpty.vue'
+import DeviceFileManagerDialog from './Device/DeviceFileManagerDialog.vue'
+import DeviceFilterEmpty from './Device/DeviceFilterEmpty.vue'
+import DeviceGroupSelectDialog from './Device/DeviceGroupSelectDialog.vue'
+import DeviceGroupSettingDialog from './Device/DeviceGroupSettingDialog.vue'
+import DeviceMirrorDiagnoseDialog from './Device/DeviceMirrorDiagnoseDialog.vue'
+import DeviceItem from './Device/DeviceItem.vue'
+import DevicePairingCodeDialog from './Device/DevicePairingCodeDialog.vue'
+import DeviceSettingDialog from './Device/DeviceSettingDialog.vue'
+import DeviceShellDialog from './Device/DeviceShellDialog.vue'
+import DeviceWirelessPairingDialog from './Device/DeviceWirelessPairingDialog.vue'
 
-const settingDialog = ref<InstanceType<typeof DeviceSettingDialog> | null>(null);
-const fileManagerDialog = ref<InstanceType<typeof DeviceFileManagerDialog> | null>(null);
-const shellDialog = ref<InstanceType<typeof DeviceShellDialog> | null>(null);
-const adbShellDialog = ref<InstanceType<typeof DeviceAdbShellDialog> | null>(null);
-const connectWifiDialog = ref<InstanceType<typeof DeviceConnectWifiDialog> | null>(null);
-const defaultSettingDialog = ref<InstanceType<typeof DeviceDefaultSettingDialog> | null>(null);
-
-const actionMirrors = ref<Record<string, InstanceType<typeof DeviceActionMirror> | null>>({})
-const helpShow = ref(false)
+const cameraDialog = ref<InstanceType<typeof DeviceCameraDialog> | null>(null)
+const mirrorAppDialog = ref<InstanceType<typeof DeviceMirrorAppDialog> | null>(null)
+const settingDialog = ref<InstanceType<typeof DeviceSettingDialog> | null>(null)
+const fileManagerDialog = ref<InstanceType<typeof DeviceFileManagerDialog> | null>(null)
+const shellDialog = ref<InstanceType<typeof DeviceShellDialog> | null>(null)
+const adbShellDialog = ref<InstanceType<typeof DeviceAdbShellDialog> | null>(null)
+const connectWifiDialog = ref<InstanceType<typeof DeviceConnectWifiDialog> | null>(null)
+const wirelessPairingDialog = ref<InstanceType<typeof DeviceWirelessPairingDialog> | null>(null)
+const pairingCodeDialog = ref<InstanceType<typeof DevicePairingCodeDialog> | null>(null)
+const defaultSettingDialog = ref<InstanceType<typeof DeviceDefaultSettingDialog> | null>(null)
+const groupSettingDialog = ref<InstanceType<typeof DeviceGroupSettingDialog> | null>(null)
+const groupSelectDialog = ref<InstanceType<typeof DeviceGroupSelectDialog> | null>(null)
+const mirrorDiagnoseDialog = ref<InstanceType<typeof DeviceMirrorDiagnoseDialog> | null>(null)
 
 const deviceStore = useDeviceStore()
 
-const deviceRecords = computed(() => {
-    const records = deviceStore.records
-    return records
+const searchKeywords = ref('')
+const filterStatus = ref<string>('')
+const filterGroupId = ref<string>('')
+const loading = ref(false)
+
+const selectedDeviceIds = ref<Set<string>>(new Set())
+const batchActionType = ref<string>('')
+
+const selectedCount = computed(() => selectedDeviceIds.value.size)
+
+const isAllVisibleSelected = computed(() => {
+    if (filterRecords.value.length === 0) return false
+    return filterRecords.value.every((r) => selectedDeviceIds.value.has(r.id))
+})
+
+const toggleSelect = (deviceId: string) => {
+    const newSet = new Set(selectedDeviceIds.value)
+    if (newSet.has(deviceId)) {
+        newSet.delete(deviceId)
+    } else {
+        newSet.add(deviceId)
+    }
+    selectedDeviceIds.value = newSet
+    if (newSet.size === 0) {
+        batchActionType.value = ''
+    }
+}
+
+const doSelectAll = () => {
+    const allVisibleSelected = filterRecords.value.every((r) => selectedDeviceIds.value.has(r.id))
+    if (allVisibleSelected) {
+        const newSet = new Set(selectedDeviceIds.value)
+        filterRecords.value.forEach((r) => newSet.delete(r.id))
+        selectedDeviceIds.value = newSet
+    } else {
+        const newSet = new Set(selectedDeviceIds.value)
+        filterRecords.value.forEach((r) => newSet.add(r.id))
+        selectedDeviceIds.value = newSet
+    }
+}
+
+const doBatchAction = async (action: string) => {
+    batchActionType.value = action
+    const deviceIds = Array.from(selectedDeviceIds.value)
+    if (deviceIds.length === 0) return
+    if (action === 'install') {
+        const path = await window.$mapi.file.openFile()
+        if (path) {
+            Dialog.loadingOn(t('device.installing'))
+            try {
+                for (const id of deviceIds) {
+                    await window.$mapi.adb.install(id, path)
+                }
+                Dialog.tipSuccess(t('device.installSuccess'))
+            } catch (e) {
+                Dialog.tipError(mapError(e))
+            } finally {
+                Dialog.loadingOff()
+            }
+        }
+        batchActionType.value = ''
+    } else if (action === 'mirror') {
+        for (const id of deviceIds) {
+            const device = deviceStore.records.find((r) => r.id === id)
+            if (device && device.status === EnumDeviceStatus.CONNECTED) {
+                deviceStore.doMirror(device)
+            }
+        }
+        batchActionType.value = ''
+    } else if (action === 'connect') {
+        // 批量连接网络设备
+        Dialog.loadingOn(t('device.connecting'))
+        let successCount = 0
+        try {
+            for (const id of deviceIds) {
+                const device = deviceStore.records.find((r) => r.id === id)
+                if (device && device.type === EnumDeviceType.WIFI && device.status === EnumDeviceStatus.DISCONNECTED) {
+                    try {
+                        const {ip, port} = parseIPPort(id)
+                        await window.$mapi.adb.connect(ip, port)
+                        successCount++
+                    } catch {
+                        // 单个设备连接失败不阻断，继续连接其他设备
+                    }
+                }
+            }
+        } finally {
+            Dialog.loadingOff()
+        }
+        if (successCount > 0) {
+            Dialog.tipSuccess(t('device.batchConnectSuccess', {count: successCount}))
+        } else {
+            Dialog.tipError(t('device.batchConnectFailed'))
+        }
+        batchActionType.value = ''
+    }
+}
+
+const filterRecords = computed(() => {
+    return deviceStore.records.filter((r) => {
+        // Status filter
+        if (filterStatus.value && r.status !== filterStatus.value) {
+            return false
+        }
+        // Group filter
+        if (filterGroupId.value) {
+            const group = deviceStore.groups.find((g) => g.id === filterGroupId.value)
+            if (!group || !group.deviceIds.includes(r.id)) {
+                return false
+            }
+        }
+        // Keyword search
+        const keywords = searchKeywords.value.toLowerCase()
+        if (keywords) {
+            if (r.name?.toLowerCase().includes(keywords)) {
+                return true
+            }
+            return false
+        }
+        return true
+    })
 })
 
 const doRefresh = async () => {
-    Dialog.loadingOn(t('正在刷新设备'))
+    loading.value = true
+    Dialog.loadingOn(t('device.refreshing'))
     try {
         await deviceStore.refresh()
-        Dialog.tipSuccess(t('刷新设备成功'))
+        Dialog.tipSuccess(t('device.refreshSuccess'))
     } catch (e) {
         Dialog.tipError(mapError(e))
     } finally {
+        loading.value = false
         Dialog.loadingOff()
     }
 }
 
-const doDelete = async (device: DeviceRecord) => {
-    Dialog.confirm(t('确定删除设备？')).then(async () => {
-        Dialog.loadingOn(t('正在删除'))
-        try {
-            await deviceStore.delete(device)
-            Dialog.tipSuccess(t('删除成功'))
-        } catch (e) {
-            Dialog.tipError(mapError(e))
-        } finally {
-            Dialog.loadingOff()
-        }
+onMounted(() => {
+    testActionSet('device.refresh', () => doRefresh())
+    testActionSet('device.filterByGroup', (groupId: string) => {
+        filterGroupId.value = groupId || ''
     })
-}
+    testActionSet('device.filterByStatus', (status: string) => {
+        filterStatus.value = status || ''
+    })
+    testActionSet('device.toggleSelect', (deviceId: string) => toggleSelect(deviceId))
+    testActionSet('device.selectAll', () => doSelectAll())
+    testActionSet('device.batchAction', (action: string) => doBatchAction(action))
+    testActionSet('device.getSelectedCount', () => selectedDeviceIds.value.size)
+    testActionSet('device.mirrorArgs', async (deviceId: string) => {
+        const device = deviceStore.records.find((r) => r.id === deviceId)
+        if (!device) return null
+        return await deviceStore.buildMirrorArgs(device)
+    })
+    testActionSet('device.shouldAutoMirror', async (deviceId: string) => {
+        const device = deviceStore.records.find((r) => r.id === deviceId)
+        if (!device) return false
+        return await deviceStore.shouldAutoMirror(device)
+    })
+    testActionSet('device.displayOverrideFormat', (data: any) => {
+        return parseDisplayOverride(data?.wmSize, data?.wmDensity)
+    })
+    testActionSet('device.mirrorAppArgs', async (data: any) => {
+        const device = deviceStore.records.find((r) => r.id === data?.deviceId)
+        if (!device) return null
+        device.setting = Object.assign({}, device.setting, {
+            appDisplaySize: data?.appDisplaySize || '',
+            appDisplayDpi: data?.appDisplayDpi || '',
+        })
+        return await deviceStore.buildMirrorArgs(device, {appPackage: data?.appPackage})
+    })
+})
 
-const onEditName = async (device: DeviceRecord, name: string) => {
-    try {
-        await deviceStore.edit(device, {name})
-        Dialog.tipSuccess(t('设备编辑成功'))
-    } catch (e) {
-        Dialog.tipError(mapError(e))
-    }
-}
-
-const doHelp = () => {
-    window.$mapi.app.openExternalWeb(AppConfig.helpUrl)
-}
-
+onUnmounted(() => {
+    testActionUnset('device.refresh')
+    testActionUnset('device.filterByGroup')
+    testActionUnset('device.filterByStatus')
+    testActionUnset('device.toggleSelect')
+    testActionUnset('device.selectAll')
+    testActionUnset('device.batchAction')
+    testActionUnset('device.getSelectedCount')
+    testActionUnset('device.mirrorArgs')
+    testActionUnset('device.shouldAutoMirror')
+    testActionUnset('device.displayOverrideFormat')
+    testActionUnset('device.mirrorAppArgs')
+})
 </script>
 
 <template>
-    <div class="pb-device-container p-8 min-h-full relative select-none"
-         :class="{'has-records':deviceStore.records.length>0}">
-        <div class="mb-4 flex items-center">
-            <div class="text-3xl font-bold flex-grow">
-                {{ $t('设备') }}
-            </div>
-            <div class="flex items-center">
-                <a-button v-if="deviceStore.records.length>0"
-                          @click="doRefresh" class="ml-1">
-                    <template #icon>
-                        <icon-refresh/>
-                    </template>
-                    {{ $t('刷新') }}
-                </a-button>
-                <a-button @click="connectWifiDialog?.show()" class="ml-1">
-                    <template #icon>
-                        <icon-link/>
-                    </template>
-                    {{ $t('连接网络设备') }}
-                </a-button>
-                <a-dropdown trigger="hover">
-                    <a-button class="ml-1">
-                        <template #icon>
-                            <icon-caret-down/>
-                        </template>
-                    </a-button>
-                    <template #content>
-                        <a-doption @click="shellDialog?.show()">{{ $t('命令行工具') }}</a-doption>
-                        <a-doption @click="defaultSettingDialog?.show()">{{ $t('默认设置') }}</a-doption>
-                    </template>
-                </a-dropdown>
+    <div
+        class="pb-device-container min-h-[calc(100vh-4rem)] relative select-none"
+        :class="{'has-records': deviceStore.records.length > 0}"
+    >
+        <div class="pb-header flex items-center bg-white p-6">
+            <div class="text-3xl font-bold flex-grow flex items-center gap-2">
+                <i-lucide-smartphone />
+                {{ $t('device.title') }}
             </div>
         </div>
-        <div class="-mx-2">
-            <div v-if="!deviceRecords.length" class="py-20">
-                <div class="text-center">
-                    <img class="h-40 m-auto opacity-50" src="./../assets/image/device-empty.svg"/>
-                </div>
-                <div class="mt-10 text-center text-lg text-gray-400">
-                    <div>{{ $t('还没有设备，使用USB连接电脑开始使用～') }}</div>
-                </div>
-                <div class="mt-10 text-center">
-                    <a-button class="mx-1"
-                              type="primary" @click="doRefresh">
+        <div class="px-6 pb-6">
+            <ListerTop :loading="loading" @refresh="doRefresh">
+                <template v-if="deviceStore.records.length > 0">
+                    <!-- 全选按钮 - 独立组件，始终显示，状态与当前列表选中关联 -->
+                    <a-button
+                        :disabled="filterRecords.length === 0"
+                        @click="doSelectAll"
+                        :aria-label="isAllVisibleSelected ? $t('common.deselectAll') : $t('common.selectAll')"
+                    >
                         <template #icon>
-                            <icon-refresh class="mr-1"/>
+                            <i-lucide-check-square v-if="isAllVisibleSelected" />
+                            <i-lucide-square v-else />
                         </template>
-                        {{ $t('刷新') }}
                     </a-button>
-                    <a-button class="mx-1" @click="helpShow=true">
-                        <template #icon>
-                            <icon-book class="mr-1"/>
+                    <!-- 全部状态 -->
+                    <a-select v-model="filterStatus" :placeholder="$t('device.allStatus')" class="w-32" allow-clear>
+                        <a-option value="">{{ $t('device.allStatus') }}</a-option>
+                        <a-option :value="EnumDeviceStatus.CONNECTED">{{ $t('device.statusConnected') }}</a-option>
+                        <a-option :value="EnumDeviceStatus.WAIT_CONNECTING">{{
+                            $t('device.statusConnecting')
+                        }}</a-option>
+                        <a-option :value="EnumDeviceStatus.DISCONNECTED">{{
+                            $t('device.statusDisconnected')
+                        }}</a-option>
+                    </a-select>
+                    <a-select v-model="filterGroupId" :placeholder="$t('device.groupFilter')" class="w-36" allow-clear>
+                        <a-option value="">{{ $t('device.groupFilter') }}</a-option>
+                        <a-option v-for="g in deviceStore.groups" :key="g.id" :value="g.id">{{ g.name }}</a-option>
+                    </a-select>
+                    <!-- 搜索设备 -->
+                    <a-input-search
+                        v-model="searchKeywords"
+                        :placeholder="$t('device.searchPlaceholder')"
+                        class="w-48"
+                        allow-clear
+                    />
+                    <!-- 批量操作 - 放在搜索设备后面 -->
+                    <a-dropdown @select="doBatchAction">
+                        <a-button :disabled="selectedDeviceIds.size === 0">
+                            <template #icon>
+                                <i-lucide-layers />
+                            </template>
+                            {{ $t('device.batchOperation', {count: selectedCount}) }}
+                        </a-button>
+                        <template #content>
+                            <a-doption value="install">
+                                <template #icon>
+                                    <i-lucide-package />
+                                </template>
+                                {{ $t('device.installApp') }}
+                            </a-doption>
+                            <a-doption value="mirror">
+                                <template #icon>
+                                    <i-lucide-monitor />
+                                </template>
+                                {{ $t('device.mirrorToComputer') }}
+                            </a-doption>
+                            <a-doption value="connect">
+                                <template #icon>
+                                    <i-lucide-link />
+                                </template>
+                                {{ $t('device.batchConnect') }}
+                            </a-doption>
                         </template>
-                        {{ $t('如何连接？') }}
-                    </a-button>
-                </div>
-                <div v-if="helpShow" class="pt-5 text-center">
-                    <div class="inline-block bg-gray-100 dark:bg-gray-700 text-left rounded-lg p-4">
-                        <div>① {{ $t('打开手机USB调试') }}</div>
-                        <div>② {{ $t('使用USB连接电脑') }}</div>
-                        <div class="pt-3">
-                            {{ $t('更多内容，请查看') }}
-                            <a href="javascript:;" class="text-link" @click="doHelp">
-                                <icon-book/>
-                                {{ $t('在线文档') }}
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div v-else class="flex flex-wrap">
-                <div v-for="(r,rIndex) in deviceRecords" :key="rIndex"
-                     class="w-full lg:w-1/2 2xl:w-1/3 p-3">
-                    <div
-                        class="hover:shadow-lg bg-white dark:bg-gray-800 shadow border border-solid h-64 border-gray-100 dark:border-gray-800 rounded-lg flex flex-col">
-                        <div class="flex overflow-hidden flex-shrink-0 items-center h-12 px-4 py-2">
-                            <div class="overflow-hidden">
-                                <div class="font-bold truncate cursor-pointer">
-                                    <DeviceType :type="r.type"/>
-                                    <span>
-                                        {{ r.name }}
-                                    </span>
-                                </div>
-                            </div>
-                            <div class="flex-grow">
-                                <InputInlineEditor :value="r.name" @change="onEditName(r,$event)">
-                                    <a class="ml-1 text-gray-400" href="javascript:;">
-                                        <icon-pen/>
-                                    </a>
-                                </InputInlineEditor>
-                            </div>
-                            <div class="w-28 flex-shrink-0 text-right">
-                                <DeviceStatus :status="r.status"/>
-                            </div>
-                        </div>
-                        <div class="h-52 relative">
-                            <div class="absolute bottom-0 left-0 p-4">
-                                <a-tooltip :content="$t('投屏到电脑')">
-                                    <div @click="actionMirrors[rIndex]?.start()"
-                                         class="cursor-pointer border-4 border-b-8 border-solid border-black rounded-lg shadow-2xl bg-black text-center overflow-hidden">
-                                        <div v-if="r.screenshot && r.runtime?.previewImage==='yes'">
-                                            <img :src="r.screenshot" class="max-h-44 max-w-44 rounded-sm"/>
-                                        </div>
-                                        <div v-else class="w-24 h-44 bg-gray-200 text-xs text-gray-300 flex rounded-sm">
-                                            <div class="m-auto">
-                                                <icon-eye class="text-2xl"/>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </a-tooltip>
-                            </div>
-                            <div class="absolute bottom-0 right-0 p-4">
-                                <DeviceActionMirror ref="actionMirrors" :device="r"/>
-                                <DeviceActionApp :device="r"/>
-                                <DeviceActionScreenshot :device="r"/>
-                                <DeviceActionRecord :device="r"/>
-                                <a-tooltip :content="$t('文件管理')">
-                                    <a-button class="ml-1" @click="fileManagerDialog?.show(r)">
-                                        <template #icon>
-                                            <icon-folder class="text-gray-400"/>
-                                        </template>
-                                    </a-button>
-                                </a-tooltip>
-                                <a-dropdown trigger="hover" :popup-max-height="false">
-                                    <a-button class="ml-1">
-                                        <template #icon>
-                                            <icon-settings class="text-gray-400"/>
-                                        </template>
-                                    </a-button>
-                                    <template #content>
-                                        <DeviceActionDisconnect
-                                            v-if="r.type===EnumDeviceType.WIFI && r.status===EnumDeviceStatus.CONNECTED"
-                                            :device="r"/>
-                                        <DeviceActionConnect
-                                            v-if="r.type===EnumDeviceType.WIFI && r.status===EnumDeviceStatus.DISCONNECTED"
-                                            :device="r"/>
-                                        <DeviceActionWifiOn
-                                            v-if="r.type===EnumDeviceType.USB"
-                                            :device="r"/>
-                                        <DeviceActionWifiOff
-                                            v-if="r.type===EnumDeviceType.WIFI"
-                                            :device="r"/>
-                                        <DeviceActionMirrorCamera :device="r"/>
-                                        <DeviceActionMirrorOTG
-                                            v-if="r.type===EnumDeviceType.USB"
-                                            :device="r"/>
-                                        <a-doption @click="adbShellDialog?.show(r)">
-                                            {{ $t('命令行') }}
-                                        </a-doption>
-                                        <a-doption v-if="rIndex>0" @click="deviceStore.doTop(rIndex)">
-                                            {{ $t('设备置顶') }}
-                                        </a-doption>
-                                        <a-doption @click="settingDialog?.show(r)">
-                                            {{ $t('设备设置') }}
-                                        </a-doption>
-                                        <a-doption v-if="r.status===EnumDeviceStatus.DISCONNECTED" @click="doDelete(r)">
-                                            {{ $t('删除设备') }}
-                                        </a-doption>
-                                    </template>
-                                </a-dropdown>
-                            </div>
-                        </div>
-                    </div>
+                    </a-dropdown>
+                </template>
+                <template #actions>
+                    <a-dropdown trigger="hover">
+                        <a-button>
+                            <template #icon>
+                                <i-lucide-link />
+                            </template>
+                            {{ $t('device.connect') }}
+                        </a-button>
+                        <template #content>
+                            <a-doption @click="connectWifiDialog?.show()">
+                                <template #icon>
+                                    <i-lucide-link />
+                                </template>
+                                {{ $t('device.connectNetwork') }}
+                            </a-doption>
+                            <a-doption @click="wirelessPairingDialog?.show()">
+                                <template #icon>
+                                    <i-lucide-qr-code />
+                                </template>
+                                {{ $t('device.wirelessPairing') }}
+                            </a-doption>
+                            <a-doption @click="pairingCodeDialog?.show()">
+                                <template #icon>
+                                    <i-lucide-shield />
+                                </template>
+                                {{ $t('device.pairingCodePairing') }}
+                            </a-doption>
+                        </template>
+                    </a-dropdown>
+                    <a-dropdown trigger="hover">
+                        <a-button>
+                            <template #icon>
+                                <i-lucide-chevron-down />
+                            </template>
+                        </a-button>
+                        <template #content>
+                            <a-doption @click="groupSettingDialog?.show()">
+                                <template #icon>
+                                    <i-lucide-folder-cog />
+                                </template>
+                                {{ $t('device.groupSettings') }}
+                            </a-doption>
+                            <a-doption @click="shellDialog?.show()">
+                                <template #icon>
+                                    <i-lucide-terminal />
+                                </template>
+                                {{ $t('device.commandLineTool') }}
+                            </a-doption>
+                            <a-doption @click="mirrorDiagnoseDialog?.show()">
+                                <template #icon>
+                                    <i-lucide-stethoscope />
+                                </template>
+                                {{ $t('device.diagnose') }}
+                            </a-doption>
+                            <a-doption @click="defaultSettingDialog?.show()">
+                                <template #icon>
+                                    <i-lucide-sliders-horizontal />
+                                </template>
+                                {{ $t('device.defaultSettings') }}
+                            </a-doption>
+                        </template>
+                    </a-dropdown>
+                </template>
+            </ListerTop>
+            <DeviceEmpty v-if="!deviceStore.records.length" />
+            <DeviceFilterEmpty v-else-if="!filterRecords.length" />
+            <div v-else class="grid gap-1 grid-cols-[repeat(auto-fill,minmax(13rem,1fr))]">
+                <div v-for="(r, rIndex) in filterRecords" :key="rIndex">
+                    <DeviceItem
+                        :record="r"
+                        :selected="selectedDeviceIds.has(r.id)"
+                        @toggle="toggleSelect(r.id)"
+                        @file-manager="fileManagerDialog?.show(r)"
+                        @setting="settingDialog?.show(r)"
+                        @adb-shell="adbShellDialog?.show(r)"
+                        @camera="cameraDialog?.show(r)"
+                        @mirror-app="mirrorAppDialog?.show(r)"
+                        @group-select="groupSelectDialog?.show(r.id)"
+                    />
                 </div>
             </div>
         </div>
     </div>
-    <DeviceConnectWifiDialog ref="connectWifiDialog"/>
-    <DeviceSettingDialog ref="settingDialog"/>
-    <DeviceFileManagerDialog ref="fileManagerDialog"/>
-    <DeviceAdbShellDialog ref="adbShellDialog"/>
-    <DeviceShellDialog ref="shellDialog"/>
-    <DeviceDefaultSettingDialog ref="defaultSettingDialog"/>
+    <DeviceConnectWifiDialog ref="connectWifiDialog" @update="doRefresh" />
+    <DeviceWirelessPairingDialog ref="wirelessPairingDialog" @update="doRefresh" />
+    <DevicePairingCodeDialog ref="pairingCodeDialog" @update="doRefresh" />
+    <DeviceCameraDialog ref="cameraDialog" />
+    <DeviceMirrorAppDialog ref="mirrorAppDialog" />
+    <DeviceSettingDialog ref="settingDialog" />
+    <DeviceFileManagerDialog ref="fileManagerDialog" />
+    <DeviceAdbShellDialog ref="adbShellDialog" />
+    <DeviceShellDialog ref="shellDialog" />
+    <DeviceDefaultSettingDialog ref="defaultSettingDialog" />
+    <DeviceGroupSettingDialog ref="groupSettingDialog" />
+    <DeviceGroupSelectDialog ref="groupSelectDialog" />
+    <DeviceMirrorDiagnoseDialog ref="mirrorDiagnoseDialog" />
 </template>
 
 <style scoped lang="less">
-.pb-device-container {
-    &.has-records {
-        background-image: url("./../assets/image/device-bg.svg");
-        background-size: 15rem 15rem;
-        background-position: 98% 98%;
-        background-blend-mode: lighten;
-        background-color: rgba(255, 255, 255, 0.8);
-        background-repeat: no-repeat;
-    }
-}
-[data-theme="dark"]{
-    .pb-device-container{
+[data-theme='dark'] {
+    .pb-device-container {
         background-color: var(--color-background);
+
+        .pb-header {
+            background-color: var(--color-background);
+        }
     }
 }
 </style>

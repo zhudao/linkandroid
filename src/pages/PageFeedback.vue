@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import {nextTick, onBeforeUnmount, onMounted, ref} from 'vue'
-import {AppConfig} from "../config";
-import {t} from "../lang";
-import UpdaterButton from "../components/common/UpdaterButton.vue";
-import {useSettingStore} from "../store/modules/setting";
-import FeedbackTicketButton from "../components/common/FeedbackTicketButton.vue";
-import PageWebviewStatus from "../components/common/PageWebviewStatus.vue";
+import {AppConfig} from '../config'
+import {t} from '../lang'
+import UpdaterButton from '../components/common/UpdaterButton.vue'
+import {useSettingStore} from '../store/modules/setting'
+import FeedbackTicketButton from '../components/common/FeedbackTicketButton.vue'
+import PageWebviewStatus from '../components/common/PageWebviewStatus.vue'
 
 const setting = useSettingStore()
 
@@ -22,7 +22,7 @@ onMounted(async () => {
     nextTick(() => {
         web.value.addEventListener('did-fail-load', (event: any) => {
             status.value?.setStatus('fail')
-        });
+        })
         web.value.addEventListener('dom-ready', async (e) => {
             const appEnv = await window.$mapi.app.appEnv()
             web.value.executeJavaScript(`window.$mapi.app.setRenderAppEnv(${JSON.stringify(appEnv)})`)
@@ -40,22 +40,22 @@ document.addEventListener('click', (event) => {
 });
 `)
             status.value?.setStatus('success')
-        });
+        })
     })
 })
-
-
 </script>
 
 <template>
-    <div style="height:calc(100vh - 2.5rem);" class="relative" v-if="webUrl">
-        <webview ref="web"
-                 id="web"
-                 :src="webUrl"
-                 :useragent="webUserAgent"
-                 nodeintegration
-                 :preload="webPreload"></webview>
-        <PageWebviewStatus ref="status"/>
+    <div style="height: calc(100vh - 2.5rem)" class="relative" v-if="webUrl">
+        <webview
+            ref="web"
+            id="web"
+            :src="webUrl"
+            :useragent="webUserAgent"
+            nodeintegration
+            :preload="webPreload"
+        ></webview>
+        <PageWebviewStatus ref="status" />
     </div>
 </template>
 

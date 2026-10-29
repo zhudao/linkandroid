@@ -1,10 +1,11 @@
-import packageJson from '../package.json';
-import {TimeUtil} from "../electron/lib/util";
+import packageJson from '../package.json'
+import {TimeUtil} from '../electron/lib/util'
 
-const BASE_URL = 'https://linkandroid.com';
+const BASE_URL = 'https://linkandroid.com'
 
 export const AppConfig = {
     name: 'LinkAndroid',
+    title: 'LinkAndroid',
     slogan: 'Link android to PC easily',
     version: packageJson.version,
     website: `${BASE_URL}`,
@@ -18,7 +19,6 @@ export const AppConfig = {
     guideUrl: `${BASE_URL}/app_manager/guide`,
     helpUrl: `${BASE_URL}/app_manager/help`,
     basic: {
-        userEnable: false,
+        userEnable: true,
     },
 }
-

@@ -1,11 +1,20 @@
-import util from "node:util";
-import net from "node:net";
-import {exec as _exec, spawn} from "node:child_process";
-import {isLinux, isMac, isWin, platformArch, platformName, platformUUID, platformVersion} from "../../lib/env";
-import {Log} from "../log/index";
-import iconv from "iconv-lite";
-import {IconvUtil, ShellUtil, StrUtil} from "../../lib/util";
-import {AppConfig} from "../../../src/config";
+import iconv from 'iconv-lite'
+import {exec as _exec, spawn} from 'node:child_process'
+import net from 'node:net'
+import util from 'node:util'
+import {AppConfig} from '../../../src/config'
+import {
+    extraResolveBin,
+    isLinux,
+    isMac,
+    isWin,
+    platformArch,
+    platformName,
+    platformUUID,
+    platformVersion,
+} from '../../lib/env'
+import {IconvUtil, ShellUtil, StrUtil} from '../../lib/util'
+import {Log} from '../log/index'
 
 const exec = util.promisify(_exec)
 
@@ -18,7 +27,7 @@ const outputStringConvert = (outputEncoding: 'utf8' | 'cp936', data: any) => {
     }
     let dataEncoding = 'binary'
     if (Buffer.isBuffer(data)) {
-        dataEncoding = IconvUtil.detect(data)
+        dataEncoding = IconvUtil.detect(data as any)
         if ('UTF-8' === dataEncoding) {
             return data.toString('utf8')
         }
@@ -29,17 +38,25 @@ const outputStringConvert = (outputEncoding: 'utf8' | 'cp936', data: any) => {
     return iconv.decode(Buffer.from(data, dataEncoding as any), outputEncoding)
 }
 
-const shell = async (command: string, option?: {
-    cwd?: string,
-    outputEncoding?: string,
-}) => {
-    option = Object.assign({
-        cwd: process.cwd(),
-        outputEncoding: isWin ? 'cp936' : 'utf8',
-    }, option)
+const shell = async (
+    command: string,
+    option?: {
+        cwd?: string
+        outputEncoding?: string
+        shell?: boolean
+    },
+) => {
+    option = Object.assign(
+        {
+            cwd: process.cwd(),
+            outputEncoding: isWin ? 'cp936' : 'utf8',
+            shell: true,
+        },
+        option,
+    )
     const result = await exec(command, {
         env: {...process.env},
-        shell: true,
+        shell: option.shell,
         encoding: 'binary',
         cwd: option['cwd'],
     } as any)
@@ -49,25 +66,41 @@ const shell = async (command: string, option?: {
     }
 }
 
-const spawnShell = async (command: string | string[], option: {
-    stdout?: (data: string, process: any) => void,
-    stderr?: (data: string, process: any) => void,
-    success?: (process: any) => void,
-    error?: (msg: string, exitCode: number, process: any) => void,
-    cwd?: string,
-    outputEncoding?: string,
-    env?: Record<string, any>,
-} | null = null): Promise<{
-    stop: () => void,
-    send: (data: any) => void,
+const trimLogList = (list: string[], maxLines: number) => {
+    if (maxLines > 0 && list.length > maxLines) {
+        list.splice(0, list.length - maxLines)
+    }
+}
+
+const spawnShell = async (
+    command: string | string[],
+    option: {
+        stdout?: (data: string, process: any) => void
+        stderr?: (data: string, process: any) => void
+        success?: (process: any) => void
+        error?: (msg: string, exitCode: number, process: any) => void
+        cwd?: string
+        outputEncoding?: string
+        env?: Record<string, any>
+        shell?: boolean
+        maxLogLines?: number // 0 = unlimited
+    } | null = null,
+): Promise<{
+    stop: () => void
+    send: (data: any) => void
     result: () => Promise<string>
 }> => {
-    option = Object.assign({
-        cwd: process.cwd(),
-        outputEncoding: isWin ? 'cp936' : 'utf8',
-        env: {},
-    }, option)
-    let commandEntry = '', args = []
+    option = Object.assign(
+        {
+            cwd: process.cwd(),
+            outputEncoding: isWin ? 'cp936' : 'utf8',
+            env: {},
+            shell: true,
+        },
+        option,
+    )
+    let commandEntry = '',
+        args = []
     if (Array.isArray(command)) {
         commandEntry = command[0]
         args = command.slice(1)
@@ -76,15 +109,17 @@ const spawnShell = async (command: string | string[], option: {
         commandEntry = args.shift() as string
     }
     Log.info('App.spawnShell', {
-        commandEntry, args, option: {
+        commandEntry,
+        args,
+        option: {
             cwd: option['cwd'],
             outputEncoding: option['outputEncoding'],
-        }
+        },
     })
     const spawnProcess = spawn(commandEntry, args, {
         env: {...process.env, ...option.env},
         cwd: option['cwd'],
-        shell: true,
+        shell: option.shell,
         encoding: 'binary',
     } as any)
     let end = false
@@ -97,6 +132,7 @@ const spawnShell = async (command: string | string[], option: {
         let dataString = outputStringConvert(option.outputEncoding as any, data)
         Log.info('App.spawnShell.stdout', dataString)
         stdoutList.push(dataString)
+        trimLogList(stdoutList, option.maxLogLines || 0)
         option.stdout?.(dataString, spawnProcess)
     })
     spawnProcess.stderr?.on('data', (data) => {
@@ -104,6 +140,7 @@ const spawnShell = async (command: string | string[], option: {
         let dataString = outputStringConvert(option.outputEncoding as any, data)
         Log.info('App.spawnShell.stderr', dataString)
         stderrList.push(dataString)
+        trimLogList(stderrList, option.maxLogLines || 0)
         option.stderr?.(dataString, spawnProcess)
     })
     spawnProcess.on('exit', (code, signal) => {
@@ -135,20 +172,37 @@ const spawnShell = async (command: string | string[], option: {
     return {
         stop: () => {
             Log.info('App.spawnShell.stop')
+            if (end) {
+                return
+            }
             if (isWin) {
-                _exec(`taskkill /pid ${spawnProcess.pid} /T /F`, {
-                    encoding: 'binary'
-                }, (err, stdout, stderr) => {
-                    if (stdout) {
-                        stdout = outputStringConvert(option.outputEncoding as any, stdout)
-                    }
-                    if (stderr) {
-                        stderr = outputStringConvert(option.outputEncoding as any, stderr)
-                    }
-                    Log.info('App.spawnShell.stop.taskkill', JSON.parse(JSON.stringify({err, stdout, stderr})))
-                })
+                _exec(
+                    `taskkill /pid ${spawnProcess.pid} /T /F`,
+                    {
+                        encoding: 'binary',
+                    },
+                    (err, stdout, stderr) => {
+                        if (stdout) {
+                            stdout = outputStringConvert(option.outputEncoding as any, stdout)
+                        }
+                        if (stderr) {
+                            stderr = outputStringConvert(option.outputEncoding as any, stderr)
+                        }
+                        Log.info('App.spawnShell.stop.taskkill', JSON.parse(JSON.stringify({err, stdout, stderr})))
+                    },
+                )
             } else {
                 spawnProcess.kill('SIGINT')
+                // 部分子进程（如无窗口模式的 scrcpy）不会响应 SIGINT，
+                // 延迟后仍未退出时强制结束，保证停止操作一定生效
+                const forceTimer = setTimeout(() => {
+                    if (end) {
+                        return
+                    }
+                    Log.info('App.spawnShell.stop.force', spawnProcess.pid)
+                    spawnProcess.kill('SIGKILL')
+                }, 1500)
+                spawnProcess.once('exit', () => clearTimeout(forceTimer))
             }
         },
         send: (data) => {
@@ -160,32 +214,58 @@ const spawnShell = async (command: string | string[], option: {
                 return stdoutList.join('') + stderrList.join('')
             }
             return new Promise((resolve, reject) => {
-                spawnProcess.on('exit', (code) => {
-                    const watchEnd = () => {
-                        setTimeout(() => {
-                            if (!end) {
-                                watchEnd()
-                                return
-                            }
-                            if (isSuccess) {
-                                resolve(stdoutList.join('') + stderrList.join(''))
-                            } else {
-                                reject(`command ${command} failed with code ${exitCode}`)
-                            }
-                        }, 10)
-                    }
-                    watchEnd()
-                })
+                const watchEnd = () => {
+                    setTimeout(() => {
+                        if (!end) {
+                            watchEnd()
+                            return
+                        }
+                        if (isSuccess) {
+                            resolve(stdoutList.join('') + stderrList.join(''))
+                        } else {
+                            reject(
+                                [
+                                    `command ${command} failed with code ${exitCode} : `,
+                                    stdoutList.join(''),
+                                    stderrList.join(''),
+                                ].join(''),
+                            )
+                        }
+                    }, 10)
+                }
+                watchEnd()
             })
-        }
+        },
     }
+}
+
+const spawnBinary = async (
+    binary: string,
+    args: string[],
+    option: {
+        stdout?: (data: string, process: any) => void
+        stderr?: (data: string, process: any) => void
+        success?: (process: any) => void
+        error?: (msg: string, exitCode: number, process: any) => void
+        cwd?: string
+        outputEncoding?: string
+        env?: Record<string, any>
+        shell?: boolean
+    } | null = null,
+): Promise<string> => {
+    args.unshift(extraResolveBin(binary))
+    const res = await Apps.spawnShell(args, {
+        ...(option || {}),
+        shell: false,
+    })
+    return await res.result()
 }
 
 const availablePortLock: {
     [port: number]: {
-        lockKey: string,
-        lockTime: number,
-    },
+        lockKey: string
+        lockTime: number
+    }
 } = {}
 
 /**
@@ -229,7 +309,6 @@ const availablePort = async (start: number, lockKey?: string, lockTime?: number)
     throw new Error('no available port')
 }
 
-
 const isPortAvailable = async (port: number, host?: string): Promise<boolean> => {
     return new Promise((resolve) => {
         const server = net.createServer()
@@ -261,6 +340,7 @@ const getUserAgent = () => {
 export const Apps = {
     shell,
     spawnShell,
+    spawnBinary,
     availablePort,
     isPortAvailable,
     fixExecutable,

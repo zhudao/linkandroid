@@ -1,0 +1,116 @@
+<script setup lang="ts">
+import {computed, ref} from 'vue'
+import {t} from '../../lang'
+import {Dialog} from '../../lib/dialog'
+import {DeviceRecord, EnumDeviceStatus} from '../../types/Device'
+import NameInfo from './App/NameInfo.json'
+import DeviceAppIcon from './DeviceAppIcon.vue'
+import DeviceAppInstallDialog from './DeviceAppInstallDialog.vue'
+import ListerTop from '../../components/common/ListerTop.vue'
+
+type AppRecord = {
+    id: string
+    name: string
+}
+
+const appInstallDialog = ref<InstanceType<typeof DeviceAppInstallDialog> | null>(null)
+
+const visible = ref(false)
+const device = ref({} as DeviceRecord)
+const appRecords = ref<AppRecord[]>([])
+const searchKeywords = ref('')
+const loading = ref(false)
+
+const show = (d: DeviceRecord) => {
+    if (d.status !== EnumDeviceStatus.CONNECTED) {
+        Dialog.tipError(t('device.notConnected'))
+        return
+    }
+    device.value = d
+    visible.value = true
+    doRefresh().then()
+}
+
+const filterAppRecords = computed(() => {
+    const keywords = searchKeywords.value.toLowerCase()
+    if (!keywords) {
+        return appRecords.value
+    }
+    return appRecords.value.filter((a) => {
+        return a.name.toLowerCase().includes(keywords) || a.id.toLowerCase().includes(keywords)
+    })
+})
+
+const doRefresh = async () => {
+    loading.value = true
+    try {
+        const records = await window.$mapi.adb.listApps(device.value.id)
+        appRecords.value = records.map((r) => {
+            return {
+                id: r.id,
+                name: NameInfo[r.id] || r.name,
+            }
+        })
+        Dialog.tipSuccess(t('common.refresh') + t('common.success'))
+    } finally {
+        loading.value = false
+    }
+}
+
+const doUninstall = async (app: AppRecord) => {
+    await Dialog.confirm(t('common.deleteConfirm'))
+    await window.$mapi.adb.uninstall(device.value.id, app.id)
+    await doRefresh()
+    Dialog.tipSuccess(t('device.uninstallSuccess'))
+}
+
+defineExpose({
+    show,
+})
+</script>
+
+<template>
+    <a-modal v-model:visible="visible" width="min(1000px, 95vw)" :footer="false" title-align="start">
+        <template #title>
+            {{ $t('device.appManagement') }}
+        </template>
+        <div style="height: 60vh; margin: -0.5rem" class="">
+            <div class="flex flex-col h-full">
+                <div class="py-2">
+                    <ListerTop :loading="loading" @refresh="doRefresh">
+                        <a-input v-model="searchKeywords" :placeholder="$t('device.filterPlaceholder')" />
+                        <template #actions>
+                            <a-button @click="appInstallDialog?.show(device)">
+                                <template #icon>
+                                    <i-lucide-plus />
+                                </template>
+                                {{ $t('device.installApp') }}
+                            </a-button>
+                        </template>
+                    </ListerTop>
+                </div>
+                <div class="flex-grow overflow-auto border border-solid border-gray-200 rounded p-2">
+                    <div v-for="a in filterAppRecords">
+                        <div class="border border-solid border-gray-200 rounded-lg mb-2 p-2 flex items-center">
+                            <div class="cursor-pointer w-10 mr-3">
+                                <DeviceAppIcon :name="a.id" size="100%" />
+                            </div>
+                            <div class="text-sm truncate w-32 mr-3">
+                                {{ a.name }}
+                            </div>
+                            <div class="text-sm truncate flex-grow text-gray-500">
+                                {{ a.id }}
+                            </div>
+                            <div>
+                                <a-button @click="doUninstall(a)">
+                                    {{ $t('device.uninstall') }}
+                                </a-button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </a-modal>
+    <DeviceAppInstallDialog ref="appInstallDialog" />
+</template>

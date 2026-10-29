@@ -1,7 +1,7 @@
-import {useTaskStore} from "../store/modules/task";
-import {StringUtil} from "../lib/util";
-import {TestAsync} from "./TestAsync";
-import {TestSync} from "./TestSync";
+import {useTaskStore} from '../store/modules/task'
+import {StringUtil} from '../lib/util'
+import {TestAsync} from './TestAsync'
+import {TestSync} from './TestSync'
 
 const taskStore = useTaskStore()
 
@@ -20,5 +20,5 @@ export const TaskManager = {
     },
     count() {
         return taskStore.records.length
-    }
+    },
 }

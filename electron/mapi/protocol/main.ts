@@ -1,4 +1,4 @@
-import {Log} from "../log/main";
+import {Log} from '../log/main'
 
 export const ProtocolMain = {
     isReady: false,
@@ -40,30 +40,18 @@ export const ProtocolMain = {
                 resolve(undefined)
             }
             run().then()
-        });
+        })
     },
     commandListeners: {} as {
-        [command: string]: Array<(params: {
-            [key: string]: string
-        }) => void>
+        [command: string]: Array<(params: {[key: string]: string}) => void>
     },
-    register(
-        command: string,
-        callback: (params: {
-            [key: string]: string
-        }) => void,
-    ) {
+    register(command: string, callback: (params: {[key: string]: string}) => void) {
         if (!this.commandListeners[command]) {
             this.commandListeners[command] = []
         }
         this.commandListeners[command].push(callback)
     },
-    unregister(
-        command: string,
-        callback: (params: {
-            [key: string]: string
-        }) => void,
-    ) {
+    unregister(command: string, callback: (params: {[key: string]: string}) => void) {
         if (!this.commandListeners[command]) {
             return
         }

@@ -1,28 +1,28 @@
 <script setup lang="ts">
-import {computed, onBeforeUnmount, onMounted, ref} from "vue";
-import {UI} from "../../lib/ui";
+import {onBeforeUnmount, onMounted, ref} from 'vue'
+import {UI} from '../../lib/ui'
 
 type DragPasteFile = {
-    name: string,
-    isDirectory: boolean,
-    isFile: boolean,
-    path: string,
-    fileExt: string,
+    name: string
+    isDirectory: boolean
+    isFile: boolean
+    path: string
+    fileExt: string
 }
 
 const dragPasteContainer = ref<HTMLElement | null>(null)
 const props = defineProps({
     pasteEnable: {
         type: Boolean,
-        default: true
+        default: true,
     },
     dragEnable: {
         type: Boolean,
-        default: true
-    }
+        default: true,
+    },
 })
 const emit = defineEmits({
-    input: (files: DragPasteFile[]) => true
+    input: (files: DragPasteFile[]) => true,
 })
 onMounted(() => {
     if (props.pasteEnable) {
@@ -102,7 +102,7 @@ const onInput = async (files: any[]) => {
     const results: DragPasteFile[] = []
     for (const f of files) {
         const isDirectory = await window.$mapi.file.isDirectory(f.path, {
-            isFullPath: true
+            isDataPath: false,
         })
         const pcs = f.name.split('.')
         let fileExt = ''
@@ -154,28 +154,27 @@ const onDragLeave = (e: DragEvent) => {
     e.stopPropagation()
     dragIsOver.value = false
 }
-
 </script>
 
 <template>
     <div ref="dragPasteContainer" class="relative">
         <slot></slot>
-        <div class="fixed bg-white bg-opacity-80 flex debug pointer-events-none"
-             v-if="dragIsOver"
-             :style="dragMaskStyle">
+        <div
+            class="fixed bg-white bg-opacity-80 flex debug pointer-events-none"
+            v-if="dragIsOver"
+            :style="dragMaskStyle"
+        >
             <div class="m-auto text-center text-gray-400">
                 <div>
-                    <icon-file class="text-5xl"/>
+                    <icon-file class="text-5xl" />
                 </div>
-                <div>
-                    <icon-drag-arrow/>
-                    拖拽到此处后释放
+                <div class="flex items-center gap-1 justify-center">
+                    <icon-drag-arrow />
+                    {{ $t('common.dragHereToRelease') }}
                 </div>
             </div>
         </div>
     </div>
 </template>
 
-<style scoped>
-
-</style>
+<style scoped></style>

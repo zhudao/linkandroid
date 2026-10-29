@@ -1,4 +1,4 @@
-import {ipcMain} from "electron";
+import {ipcMain} from 'electron'
 
 import index from './index'
 
@@ -8,11 +8,14 @@ ipcMain.handle('misc:getZipFileContent', async (_, path: string, pathInZip: stri
 ipcMain.handle('misc:unzip', async (_, zipPath: string, dest: string) => {
     return await index.unzip(zipPath, dest)
 })
+ipcMain.handle('misc:getNetworkInterfaces', async () => {
+    return index.getNetworkInterfaces()
+})
 
 export default {
     ...index,
 }
 
 export const MiscMain = {
-    ...index
+    ...index,
 }

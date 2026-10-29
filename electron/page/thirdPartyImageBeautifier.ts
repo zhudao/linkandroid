@@ -1,15 +1,14 @@
-import {preloadDefault} from "../lib/env-main";
-import {AppRuntime} from "../mapi/env";
-import {BrowserWindow} from "electron";
-import {Page} from "./index";
-import {t} from "../config/lang";
+import {BrowserWindow} from 'electron'
+import {t} from '../config/lang'
+import {preloadDefault} from '../lib/env-main'
+import {Page} from './index'
 
 export const PageThirdPartyImageBeautifier = {
     NAME: 'thirdPartyImageBeautifier',
     open: (option: any) => {
         const win = new BrowserWindow({
-            title: t('截图编辑'),
-            parent: AppRuntime.mainWindow,
+            title: t('page.screenshot.title'),
+            parent: null,
             minWidth: 900,
             minHeight: 700,
             width: 900,
@@ -22,12 +21,12 @@ export const PageThirdPartyImageBeautifier = {
                 nodeIntegration: true,
                 contextIsolation: false,
                 webSecurity: false,
-                preload: preloadDefault
+                preload: preloadDefault,
             },
             show: true,
             frame: true,
-        });
+        })
         // win.maximize();
-        return Page.openWindow(PageThirdPartyImageBeautifier.NAME, win, "third-party/image-beautifier/index.html");
-    }
+        return Page.openWindow(PageThirdPartyImageBeautifier.NAME, win, 'third-party/image-beautifier/index.html')
+    },
 }

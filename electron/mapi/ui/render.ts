@@ -19,12 +19,12 @@ const initLoaders = () => {
 
     const safeDOM = {
         append(parent: HTMLElement, child: HTMLElement) {
-            if (!Array.from(parent.children).find(e => e === child)) {
+            if (!Array.from(parent.children).find((e) => e === child)) {
                 return parent.appendChild(child)
             }
         },
         remove(parent: HTMLElement, child: HTMLElement) {
-            if (Array.from(parent.children).find(e => e === child)) {
+            if (Array.from(parent.children).find((e) => e === child)) {
                 return parent.removeChild(child)
             }
         },
@@ -106,7 +106,7 @@ const initLoaders = () => {
     const {appendLoading, removeLoading} = useLoading()
 
     const isMain = () => {
-        return true;
+        return true
         let l = window.location.href
         if (l.indexOf('app.asar/dist/index.html') > 0) {
             return true
@@ -127,7 +127,6 @@ const initLoaders = () => {
     setTimeout(removeLoading, 4999)
 }
 
-
 export default {
-    init
+    init,
 }

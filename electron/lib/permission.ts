@@ -1,14 +1,13 @@
-import {isMac} from "./env";
+import {isMac} from './env'
 
 let nodeMacPermissions = null
 if (isMac) {
-    (async () => {
+    ;(async () => {
         try {
-            nodeMacPermissions = await import('node-mac-permissions');
-            nodeMacPermissions = nodeMacPermissions.default;
+            nodeMacPermissions = await import('node-mac-permissions')
+            nodeMacPermissions = nodeMacPermissions.default
             // console.log('nodeMacPermissions',nodeMacPermissions);
-        } catch (e) {
-        }
+        } catch (e) {}
     })()
 }
 
@@ -16,10 +15,10 @@ export const Permissions = {
     async checkAccessibilityAccess(): Promise<boolean> {
         return new Promise((resolve, reject) => {
             if (isMac) {
-                const status = nodeMacPermissions.getAuthStatus('accessibility');
+                const status = nodeMacPermissions.getAuthStatus('accessibility')
                 resolve(status === 'authorized')
             } else {
-                resolve(true);
+                resolve(true)
             }
         })
     },
@@ -29,10 +28,10 @@ export const Permissions = {
     async checkScreenCaptureAccess(): Promise<boolean> {
         return new Promise((resolve, reject) => {
             if (isMac) {
-                const status = nodeMacPermissions.getAuthStatus('screen');
+                const status = nodeMacPermissions.getAuthStatus('screen')
                 resolve(status === 'authorized')
             } else {
-                resolve(true);
+                resolve(true)
             }
         })
     },

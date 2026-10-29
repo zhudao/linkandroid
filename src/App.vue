@@ -5,22 +5,22 @@
 </template>
 
 <script setup lang="ts">
-import {onMounted, ref} from "vue";
-import {onLocaleChange} from "./lang"
+import {onMounted, ref} from 'vue'
+import {onLocaleChange} from './lang'
 
-import zhCN from '@arco-design/web-vue/es/locale/lang/zh-cn';
-import enUS from '@arco-design/web-vue/es/locale/lang/en-us';
-import {doCheckForUpdate} from "./components/common/util";
+import zhCN from '@arco-design/web-vue/es/locale/lang/zh-cn'
+import enUS from '@arco-design/web-vue/es/locale/lang/en-us'
+import {doCheckForUpdate} from './components/common/util'
 
 const locales = {
     'zh-CN': zhCN,
     'en-US': enUS,
-};
+}
 
-const locale = ref(zhCN);
+const locale = ref(zhCN)
 onLocaleChange((newLocale) => {
-    locale.value = locales[newLocale];
-});
+    locale.value = locales[newLocale] ?? zhCN
+})
 
 onMounted(() => {
     setTimeout(async () => {
@@ -29,7 +29,6 @@ onMounted(() => {
             return
         }
         doCheckForUpdate().then()
-    }, 6000);
-});
-
+    }, 6000)
+})
 </script>

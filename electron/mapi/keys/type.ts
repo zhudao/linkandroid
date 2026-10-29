@@ -1,6 +1,6 @@
 export enum HotkeyMouseButtonEnum {
     LEFT = 1,
-    RIGHT = 2
+    RIGHT = 2,
 }
 
 export type HotkeyKeyItem = {
@@ -17,7 +17,7 @@ export type HotkeyKeyItem = {
 }
 
 export type HotkeyKeySimpleItem = {
-    type: 'Ctrl' | 'Alt' | 'Meta',
+    type: 'Ctrl' | 'Alt' | 'Meta'
     times: number
 }
 

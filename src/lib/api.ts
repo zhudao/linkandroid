@@ -1,20 +1,20 @@
-import axios, {type AxiosInstance, type AxiosRequestConfig} from "axios"
-import {merge} from "lodash-es"
-import {Dialog} from "./dialog";
-import {AppConfig} from "../config";
-import {user} from "../store/modules/user";
+import axios, {type AxiosInstance, type AxiosRequestConfig} from 'axios'
+import {merge} from 'lodash-es'
+import {Dialog} from './dialog'
+import {AppConfig} from '../config'
+import {user} from '../store/modules/user'
 
 function createService() {
     const service = axios.create()
     service.interceptors.request.use(
         (config) => config,
-        (error) => Promise.reject(error)
+        (error) => Promise.reject(error),
     )
     service.interceptors.response.use(
         (response) => {
             const apiData = response.data
             const responseType = response.request?.responseType
-            if (responseType === "blob" || responseType === "arraybuffer") return apiData
+            if (responseType === 'blob' || responseType === 'arraybuffer') return apiData
             const code = apiData.code
             // if (code === undefined) {
             //     ElMessage.error("非本系统的接口")
@@ -36,7 +36,7 @@ function createService() {
         },
         (error) => {
             return Promise.reject(error)
-        }
+        },
     )
     return service
 }
@@ -51,11 +51,11 @@ function createRequest(service: AxiosInstance) {
             },
             timeout: 60 * 1000,
             baseURL: AppConfig.apiBaseUrl,
-            data: {}
+            data: {},
         }
         // 将默认配置 defaultConfig 和传入的自定义配置 config 进行合并成为 mergeConfig
         const mergeConfig = merge(defaultConfig, config)
-        return service(mergeConfig).then(response => response as T)
+        return service(mergeConfig).then((response) => response as T)
     }
 }
 
@@ -63,8 +63,11 @@ const service = createService()
 
 export const request = createRequest(service)
 
-
-export const defaultResponseProcessor = (res: ApiResult<any>, success: Function | null = null, error: Function | null = null) => {
+export const defaultResponseProcessor = (
+    res: ApiResult<any>,
+    success: Function | null = null,
+    error: Function | null = null,
+) => {
     if (res.code) {
         if (error) {
             if (!error(res)) {

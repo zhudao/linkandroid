@@ -1,23 +1,24 @@
-import {exposeContext} from "./util";
-import {AppEnv} from "./env";
+import {exposeContext} from './util'
+import {AppEnv} from './env'
 
-import config from "./config/render";
-import log from "./log/render";
-import app from "./app/render";
-import storage from "./storage/render";
-import db from "./db/render";
-import file from "./file/render";
-import event from "./event/render";
-import ui from "./ui/render";
-import updater from "./updater/render";
-import statistics from "./statistics/render";
-import lang from "./lang/render";
-import user from "./user/render";
-import misc from "./misc/render";
+import config from './config/render'
+import log from './log/render'
+import app from './app/render'
+import storage from './storage/render'
+import db from './db/render'
+import file from './file/render'
+import event from './event/render'
+import ui from './ui/render'
+import updater from './updater/render'
+import statistics from './statistics/render'
+import user from './user/render'
+import misc from './misc/render'
 
-import adb from "./adb/render";
-import scrcpy from "./scrcpy/render";
-import ffmpeg from "./ffmpeg/render";
+import adb from './adb/render'
+import scrcpy from './scrcpy/render'
+import serve from './serve/render'
+import power from './power/render'
+import task from './task/render'
 
 export const MAPI = {
     init(env: typeof AppEnv = null) {
@@ -34,13 +35,14 @@ export const MAPI = {
                 ui,
                 updater,
                 statistics,
-                lang,
                 user,
                 misc,
 
                 adb,
                 scrcpy,
-                ffmpeg,
+                serve,
+                power,
+                task,
             })
             db.init()
             event.init()
@@ -50,6 +52,9 @@ export const MAPI = {
             AppEnv.appRoot = env.appRoot
             AppEnv.appData = env.appData
             AppEnv.userData = env.userData
+            AppEnv.dataRoot = env.dataRoot
+            AppEnv.dataRootDefault = env.dataRootDefault
+            AppEnv.dataRootIsDefault = env.dataRootIsDefault
             AppEnv.isInit = true
         }
     },

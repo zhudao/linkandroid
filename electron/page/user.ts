@@ -1,21 +1,20 @@
-import {BrowserWindow, shell} from "electron";
-import {preloadDefault} from "../lib/env-main";
-import {AppRuntime} from "../mapi/env";
-import {t} from "../config/lang";
-import {Page} from "./index";
-import {AppConfig} from "../../src/config";
-import {User} from "../mapi/user/main";
+import {BrowserWindow} from 'electron'
+import {t} from '../config/lang'
+import {preloadDefault} from '../lib/env-main'
+import {Page} from './index'
 
 export const PageUser = {
     NAME: 'user',
-    open: async (option: {
-        parent?: BrowserWindow,
-    }) => {
-        option = option || {}
-        let parent = option.parent || AppRuntime.mainWindow
-        let alwaysOnTop = !parent
+    open: async (option: {parent?: BrowserWindow}) => {
+        option = Object.assign(
+            {
+                parent: null,
+            },
+            option,
+        )
+        let alwaysOnTop = !option.parent
         const win = new BrowserWindow({
-            title: t('用户中心'),
+            title: t('page.user.title'),
             minWidth: 700,
             minHeight: 500,
             width: 700,
@@ -29,12 +28,14 @@ export const PageUser = {
             },
             show: true,
             frame: false,
+            titleBarStyle: 'hidden',
+            trafficLightPosition: {x: 10, y: 11},
             center: true,
             transparent: false,
             focusable: true,
-            parent,
+            parent: option.parent,
             alwaysOnTop,
-        });
-        return Page.openWindow(PageUser.NAME, win, "page/user.html");
-    }
+        })
+        return Page.openWindow(PageUser.NAME, win, 'page/user.html')
+    },
 }

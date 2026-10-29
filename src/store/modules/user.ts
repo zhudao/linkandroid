@@ -1,11 +1,11 @@
-import {defineStore} from "pinia"
-import store from "../index";
-import {AppConfig} from "../../config";
-import {useSettingStore} from "./setting";
+import {defineStore} from 'pinia'
+import store from '../index'
+import {AppConfig} from '../../config'
+import {useSettingStore} from './setting'
 
 const setting = useSettingStore()
 
-export const userStore = defineStore("user", {
+export const userStore = defineStore('user', {
     state() {
         return {
             isInit: false,
@@ -15,21 +15,30 @@ export const userStore = defineStore("user", {
                 id: null as string | null,
                 name: null as string | null,
                 avatar: null as string | null,
+                deviceCode: null as string | null,
             },
             data: {
-                vip: {},
-                functions: {},
+                vip: {
+                    id: null as string | null,
+                    flag: null as string | null,
+                    title: null as string | null,
+                    icon: null as string | null,
+                    isDefault: true,
+                },
+                functions: {} as Record<string, any>,
             } as {
                 vip: {
-                    [key: string]: any,
-                },
-                functions: {
-                    [key: string]: any,
-                },
-                [key: string]: any,
+                    id: string | null
+                    flag: string | null
+                    title: string | null
+                    icon: string | null
+                    isDefault: boolean
+                }
+                functions: Record<string, any>
+                [key: string]: any
             },
             basic: {} as {
-                [key: string]: any,
+                [key: string]: any
             },
         }
     },
@@ -72,8 +81,8 @@ export const userStore = defineStore("user", {
                 param.push('is_dark=1')
             }
             return `${AppConfig.apiBaseUrl}/app_manager/user_web?${param.join('&')}`
-        }
-    }
+        },
+    },
 })
 
 export const user = userStore(store)
