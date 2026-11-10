@@ -4,14 +4,15 @@
 //
 // Flow:
 //   0. Download share-binary (scrcpy/ffmpeg/ffprobe) -> _temp/share-binary/
+//      Sparse checkout: only the current platform folder is downloaded.
 //   1. Build Go CLI         -> dist-cli/ + electron/resources/extra/{plat}-{arch}/
 //   2. Build Python env     -> env/task/ + electron/resources/extra/{plat}-{arch}/
 //   3. Run vite build
 //   4. Generate native electron-builder config
 //   5. Run electron-builder
 
-import {execSync} from 'node:child_process';
-import {readFileSync, mkdirSync, rmSync, cpSync, existsSync, readdirSync, lstatSync, readlinkSync, unlinkSync, symlinkSync, statSync} from 'node:fs';
+import {execSync, spawnSync} from 'node:child_process';
+import {readFileSync, writeFileSync, mkdirSync, rmSync, cpSync, existsSync, readdirSync, lstatSync, readlinkSync, unlinkSync, symlinkSync, statSync} from 'node:fs';
 import {resolve, dirname, join, basename, relative, isAbsolute, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -44,6 +45,35 @@ function run(cmd, extraEnv = {}) {
 function fail(message) {
   console.error(`  [ERROR] ${message}`);
   process.exit(1);
+}
+
+// Run git without a shell so that arguments reach it verbatim. Needed for
+// sparse-checkout patterns: on Windows, Git Bash's MSYS runtime rewrites
+// arguments that start with "/" into Windows paths ("/win-x86/scrcpy" becomes
+// "C:/Program Files/Git/win-x86/scrcpy"), the spec then matches nothing while
+// git still exits 0, and the failure only shows up later as
+// "pathspec ... did not match any file(s) known to git".
+function gitRun(args, input) {
+  console.log(`  + git ${args.join(' ')}`);
+  const res = spawnSync('git', args, {cwd: rootDir, input, encoding: 'utf8'});
+  if (res.error) {
+    throw new Error(`git ${args.join(' ')} failed: ${res.error.message}`);
+  }
+  if (res.status !== 0) {
+    throw new Error(`git ${args.join(' ')} failed (exit ${res.status}): ${(res.stderr || '').trim()}`);
+  }
+  return res.stdout || '';
+}
+
+function gitVersionAtLeast(minVersion) {
+  const res = spawnSync('git', ['--version'], {cwd: rootDir, encoding: 'utf8'});
+  const match = /(\d+)\.(\d+)/.exec((res.stdout || '').trim());
+  if (!match) {
+    return false;
+  }
+  const [major, minor] = [Number(match[1]), Number(match[2])];
+  const [wantMajor, wantMinor] = minVersion.split('.').map(Number);
+  return major > wantMajor || (major === wantMajor && minor >= wantMinor);
 }
 
 function assertPath(path, label) {
@@ -113,6 +143,15 @@ function pythonArchiveNames(target) {
   return [`${base}-install_only_stripped.tar.gz`, `${base}-install_only.tar.gz`];
 }
 
+const PYTHON_RELEASE_BASE = 'https://github.com/astral-sh/python-build-standalone/releases/download';
+// Mirrors of the same release. GitHub answers anonymous release downloads with
+// 504 during its incidents, so fall back to a mirror instead of failing the job.
+const PYTHON_MIRRORS = [
+  PYTHON_RELEASE_BASE,
+  'https://mirror.nju.edu.cn/github-release/astral-sh/python-build-standalone',
+  'https://registry.npmmirror.com/-/binary/python-build-standalone',
+];
+
 function downloadPythonArchive(target) {
   const cacheDir = 'env/task/_cache';
   mkdirSync(cacheDir, {recursive: true});
@@ -122,16 +161,20 @@ function downloadPythonArchive(target) {
       console.log(`  [python] use cache ${filePath} (${formatBytes(statSync(filePath).size)})`);
       return filePath;
     }
-    const url = `https://github.com/astral-sh/python-build-standalone/releases/download/${STANDALONE_TAG}/${fileName}`;
-    try {
-      console.log(`  [python] download ${url}`);
-      run(`curl -fL --connect-timeout 30 --max-time 600 "${url}" -o "${filePath}"`);
-      console.log(`  [python] archive ready ${filePath} (${formatBytes(statSync(filePath).size)})`);
-      return filePath;
-    } catch (_) {
-      rmSync(filePath, {force: true});
-      console.log(`  [python] skip missing ${fileName}`);
+    for (const base of PYTHON_MIRRORS) {
+      const url = `${base}/${STANDALONE_TAG}/${fileName}`;
+      try {
+        console.log(`  [python] download ${url}`);
+        // Retry 5xx (including the frequent 504 on release assets) with backoff.
+        run(`curl -fL --retry 5 --retry-delay 5 --retry-connrefused --connect-timeout 30 --max-time 600 "${url}" -o "${filePath}"`);
+        console.log(`  [python] archive ready ${filePath} (${formatBytes(statSync(filePath).size)})`);
+        return filePath;
+      } catch (_) {
+        rmSync(filePath, {force: true});
+        console.log(`  [python] source failed, trying next: ${url}`);
+      }
     }
+    console.log(`  [python] skip missing ${fileName}`);
   }
   throw new Error(`No portable Python archive found for target ${target}`);
 }
@@ -297,18 +340,15 @@ preflight();
 
 // ================================================================
 // 0. Download share-binary binaries (scrcpy, ffmpeg, ffprobe)
+//    The repository ships every platform (~1 GB of binaries), while a
+//    build only needs the packaged platform folder, so we use a partial
+//    clone (--filter=blob:none) plus sparse checkout to transfer only
+//    the few files of the current platform/arch.
 // ================================================================
 console.log(`\n─── Download share-binary binaries ───`);
 const shareRepoDir = join(rootDir, SHARE_DIR);
-if (!existsSync(shareRepoDir)) {
-  mkdirSync(TEMP_DIR, {recursive: true});
-  run(`git clone --depth 1 "${SHARE_REPO}" "${SHARE_DIR}"`);
-} else {
-  // If already cloned, trust existing — no need to pull every time
-  console.log(`  [skip] ${SHARE_DIR} already exists`);
-}
 
-// Define which files to copy per platform directory
+// Define which files we take from each platform directory
 const SHARE_FILES = {
   'osx-arm64': ['scrcpy', 'ffmpeg', 'ffprobe'],
   'osx-x86':   ['scrcpy'],
@@ -317,29 +357,77 @@ const SHARE_FILES = {
   'win-x86':     ['scrcpy', 'ffmpeg.exe', 'ffprobe.exe'],
 };
 
-function copyToExtra(platDir, items) {
-  const srcBase = join(shareRepoDir, platDir);
-  const destBase = join('electron/resources/extra', platDir);
-  if (!existsSync(srcBase)) {
-    console.log(`  [warn] share-binary dir missing, skip optional payload: ${srcBase}`);
-    return;
+// Platform folders that reuse another folder's binaries.
+// share-binary has no Windows ARM64 build (scrcpy/ffmpeg ship x64 binaries
+// only), so win-arm64 takes the win-x86 files: Windows on ARM runs x64
+// executables through emulation, which is what earlier releases shipped.
+const SHARE_SOURCE_DIR = {
+  'win-arm64': 'win-x86',
+};
+
+// Only the primary arch gets packaged, so only its platform folder is needed
+const sharePlatDir = edir(primaryArch);
+const shareSrcDir = SHARE_SOURCE_DIR[sharePlatDir] || sharePlatDir;
+const shareItems = SHARE_FILES[shareSrcDir] || [];
+if (shareItems.length === 0) {
+  fail(`No share-binary mapping for platform folder ${sharePlatDir} (source: ${shareSrcDir})`);
+}
+if (shareSrcDir !== sharePlatDir) {
+  console.log(`  [reuse] ${sharePlatDir} uses the ${shareSrcDir} binaries`);
+}
+const sharePaths = shareItems.map((item) => `${shareSrcDir}/${item}`);
+const sharePatterns = sharePaths.map((path) => `/${path}`);
+
+if (!existsSync(join(shareRepoDir, '.git'))) {
+  mkdirSync(TEMP_DIR, {recursive: true});
+  rmSync(shareRepoDir, {recursive: true, force: true});
+  try {
+    console.log(`  [clone] partial clone (blobless) + sparse checkout`);
+    run(`git clone --depth 1 --filter=blob:none --sparse "${SHARE_REPO}" "${SHARE_DIR}"`);
+  } catch (_) {
+    console.log(`  [warn] partial clone unsupported (old git or proxy), fall back to a plain shallow clone`);
+    rmSync(shareRepoDir, {recursive: true, force: true});
+    run(`git clone --depth 1 "${SHARE_REPO}" "${SHARE_DIR}"`);
   }
-  mkdirSync(destBase, {recursive: true});
-  for (const item of items) {
-    const src = join(srcBase, item);
-    const dest = join(destBase, item);
-    if (!existsSync(src)) {
-      console.log(`  [warn] optional share-binary missing: ${src}`);
-      continue;
-    }
-    console.log(`  [copy] ${platDir}/${item}`);
-    rmSync(dest, {recursive: true, force: true});
-    cpSync(src, dest, {recursive: true});
-  }
+} else {
+  // If already cloned, trust existing — no need to pull every time
+  console.log(`  [skip] ${SHARE_DIR} already exists`);
 }
 
-for (const [platDir, items] of Object.entries(SHARE_FILES)) {
-  copyToExtra(platDir, items);
+// Materialize only the desired files (missing blobs are fetched on demand).
+// The patterns go in over stdin, never as argv (see gitRun): that keeps them
+// intact under MSYS/Git Bash on Windows. git < 2.26 has no `--stdin`, so it
+// falls back to writing .git/info/sparse-checkout, which is what `set` does.
+const sharePatternsInput = `${sharePatterns.join('\n')}\n`;
+console.log(`  [sparse] ${sharePatterns.join(' ')}`);
+try {
+  if (gitVersionAtLeast('2.26')) {
+    gitRun(['-C', SHARE_DIR, 'sparse-checkout', 'set', '--no-cone', '--stdin'], sharePatternsInput);
+  } else {
+    console.log(`  [warn] git < 2.26 has no sparse-checkout --stdin, writing the spec directly`);
+    writeFileSync(join(shareRepoDir, '.git', 'info', 'sparse-checkout'), sharePatternsInput);
+    gitRun(['-C', SHARE_DIR, 'config', 'core.sparseCheckout', 'true']);
+    gitRun(['-C', SHARE_DIR, 'config', 'core.sparseCheckoutCone', 'false']);
+    gitRun(['-C', SHARE_DIR, 'read-tree', '-mu', 'HEAD']);
+  }
+  gitRun(['-C', SHARE_DIR, 'checkout', '-f', 'HEAD', '--', ...sharePaths]);
+} catch (e) {
+  const spec = spawnSync('git', ['-C', SHARE_DIR, 'sparse-checkout', 'list'], {cwd: rootDir, encoding: 'utf8'});
+  console.error(`  [spec] ${(spec.stdout || '(empty)').trim().replace(/\n/g, ' ')}`);
+  fail(`Sparse checkout failed: git >= 2.25 required, or the network dropped while fetching blobs (retry, or remove ${SHARE_DIR})\n${e.message}`);
+}
+
+const shareDestBase = join('electron/resources/extra', sharePlatDir);
+mkdirSync(shareDestBase, {recursive: true});
+for (const item of shareItems) {
+  const src = join(shareRepoDir, shareSrcDir, item);
+  if (!existsSync(src)) {
+    fail(`share-binary file missing after checkout: ${src}`);
+  }
+  const dest = join(shareDestBase, item);
+  console.log(`  [copy] ${shareSrcDir}/${item} -> extra/${sharePlatDir}/${item}`);
+  rmSync(dest, {recursive: true, force: true});
+  cpSync(src, dest, {recursive: true});
 }
 
 // ================================================================
