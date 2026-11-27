@@ -14,7 +14,9 @@ type BroadcastType =
     | 'HotkeyWatch'
     | 'Notice'
     | 'MonitorEvent'
+    | 'TaskScheduledFailed'
     | 'UpdaterState'
+    | 'PyenvInstallLog'
 
 const broadcast = (
     type: BroadcastType,

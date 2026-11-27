@@ -4,14 +4,19 @@ import ListerTop from '../components/common/ListerTop.vue'
 import {t} from '../lang'
 import {Dialog} from '../lib/dialog'
 import {mapError} from '../lib/error'
+import {TimeUtil} from '../lib/util'
 import {useDeviceStore} from '../store/modules/device'
+
 import {testActionSet, testActionUnset} from '../utils/test'
 import TaskEditorDialog from './Task/TaskEditorDialog.vue'
 import TaskRunDialog from './Task/TaskRunDialog.vue'
 import TaskRunLogDialog from './Task/TaskRunLogDialog.vue'
+import {useTaskTransfer} from './Task/useTaskTransfer'
+
 
 interface TaskRecord {
     id: number
+    uuid?: string
     created_at: string
     updated_at: string
     name: string
@@ -22,22 +27,36 @@ interface TaskRecord {
     cron_expression?: string
     device_ids?: string
     run_on_all_devices?: number
+    auto_repair?: number
+    
 }
 
 const records = ref<TaskRecord[]>([])
 const loading = ref(false)
 const searchKeywords = ref('')
 
+
 const editorDialog = ref<InstanceType<typeof TaskEditorDialog> | null>(null)
 const runDialog = ref<InstanceType<typeof TaskRunDialog> | null>(null)
 const runLogDialog = ref<InstanceType<typeof TaskRunLogDialog> | null>(null)
+const transfer = useTaskTransfer()
+
 const deviceStore = useDeviceStore()
+
 
 const filterRecords = computed(() => {
     const keywords = searchKeywords.value.toLowerCase()
-    if (!keywords) return records.value
-    return records.value.filter((r) => r.name.toLowerCase().includes(keywords))
+    let list = records.value
+    
+    if (!keywords) return list
+    return list.filter((r) => r.name.toLowerCase().includes(keywords))
 })
+
+const formatDateTime = (value: string) => {
+    const time = value ? new Date(value).getTime() : NaN
+    if (Number.isNaN(time)) return ''
+    return TimeUtil.format(time, 'YYYY-MM-DD HH:mm')
+}
 
 const loadData = async () => {
     loading.value = true
@@ -54,12 +73,15 @@ const doRefresh = async () => {
     Dialog.loadingOn(t('common.refresh'))
     try {
         await loadData()
+        
     } catch (e) {
         Dialog.tipError(mapError(e))
     } finally {
         Dialog.loadingOff()
     }
 }
+
+
 
 const doAdd = () => {
     editorDialog.value?.show()
@@ -73,10 +95,24 @@ const doCopy = async (record: TaskRecord) => {
     editorDialog.value?.copy(record)
 }
 
+const doImport = async () => {
+    const result = await transfer.doImport()
+    if (result && result.imported.length > 0) {
+        await refreshAll()
+    }
+}
+
+const doExport = async (record: TaskRecord) => {
+    await transfer.doExport(record)
+}
+
+const doExportAll = async () => {
+    await transfer.doExportAll()
+}
+
 const deleteRecord = async (record: TaskRecord) => {
     try {
-        await window.$mapi.db.delete(`DELETE FROM task WHERE id = ?`, [record.id])
-        await window.$mapi.db.delete(`DELETE FROM task_run WHERE task_id = ?`, [record.id])
+        await window.$mapi.project.remove(record.id)
         Dialog.tipSuccess(t('task.deleteSuccess'))
         await loadData()
     } catch (e) {
@@ -98,23 +134,32 @@ const doTestEnsureSeed = async () => {
     if (records.value.length > 0) {
         return
     }
-    const now = new Date().toISOString()
     try {
-        await window.$mapi.db.insert(
-            `INSERT INTO task (created_at, updated_at, name, description, code, language) VALUES (?, ?, ?, ?, ?, ?)`,
-            [
-                now,
-                now,
-                t('task.seedName'),
-                t('task.seedDescription'),
-                "import la\ndevice = la.device()\nprint('seed task ok')\nprint('device=' + device.serial())",
-                'python',
-            ],
-        )
+        await window.$mapi.project.save({
+            name: t('task.seedName'),
+            description: t('task.seedDescription'),
+            code: "import la\ndevice = la.device()\nprint('seed task ok')\nprint('device=' + device.serial())",
+            language: 'python',
+        })
         await loadData()
     } catch (e) {
         Dialog.tipError(mapError(e))
     }
+}
+
+const doOpenDir = async (record: TaskRecord) => {
+    try {
+        await window.$mapi.project.openDir(record.id)
+    } catch (e) {
+        Dialog.tipError(mapError(e))
+    }
+}
+
+
+
+const refreshAll = async () => {
+    await loadData()
+    
 }
 
 const doTestRun = async () => {
@@ -186,13 +231,34 @@ const doTestResetToManual = async () => {
 
 onMounted(async () => {
     await loadData()
+    
     testActionSet('task.refresh', () => doRefresh())
     testActionSet('task.add', () => doAdd())
     testActionSet('task.copy', () => {
         if (records.value.length > 0) doCopy(records.value[0])
     })
+    testActionSet('task.exportTo', (payload: {id: number; path: string}) => transfer.exportTo(payload.id, payload.path))
+    testActionSet('task.exportAllTo', (dir: string) => transfer.exportAllTo(dir))
+    testActionSet('task.previewImport', (paths: string[]) => window.$mapi.project.previewImport(paths))
+    testActionSet('task.importFrom', (payload: {paths: string[]; overwrite?: boolean}) =>
+        transfer.importPaths(payload.paths, !!payload.overwrite),
+    )
+    testActionSet('task.importWithConfirm', (paths: string[]) => {
+        // resolves immediately; the test clicks the overwrite confirm dialog and then checks the list
+        transfer
+            .doImportPaths(paths)
+            .then(async (result) => {
+                if (result && result.imported.length > 0) await refreshAll()
+            })
+            .catch(() => {})
+        return true
+    })
     testActionSet('task.edit', () => {
         if (records.value.length > 0) doEdit(records.value[0])
+    })
+    testActionSet('task.editById', (id: number) => {
+        const record = records.value.find((item) => item.id === Number(id))
+        if (record) doEdit(record)
     })
     testActionSet('task.delete', () => {
         if (records.value.length > 0) doTestDelete(records.value[0])
@@ -201,30 +267,41 @@ onMounted(async () => {
     testActionSet('task.setupSchedule', (cronExpression?: string) => doTestSetupSchedule(cronExpression))
     testActionSet('task.resetToManual', () => doTestResetToManual())
     testActionSet('task.clearAllRunRecords', () => doTestClearAllRunRecords())
+    testActionSet('task.ensureSeed', () => doTestEnsureSeed())
+    
 })
 
 onUnmounted(() => {
     testActionUnset('task.refresh')
     testActionUnset('task.add')
     testActionUnset('task.copy')
+    testActionUnset('task.exportTo')
+    testActionUnset('task.exportAllTo')
+    testActionUnset('task.previewImport')
+    testActionUnset('task.importFrom')
+    testActionUnset('task.importWithConfirm')
     testActionUnset('task.edit')
+    testActionUnset('task.editById')
     testActionUnset('task.delete')
     testActionUnset('task.run')
     testActionUnset('task.setupSchedule')
     testActionUnset('task.resetToManual')
     testActionUnset('task.clearAllRunRecords')
+    testActionUnset('task.ensureSeed')
+    
 })
 </script>
 
 <template>
     <div class="pb-task-container min-h-[calc(100vh-4rem)] relative select-none">
-        <div class="pb-header flex items-center p-6">
-            <div class="text-3xl font-bold flex-grow flex items-center gap-2">
+        <div class="pb-header flex items-center p-4 sm:p-6">
+            <div class="text-3xl font-bold flex-grow flex items-center gap-2 whitespace-nowrap shrink-0">
                 <i-lucide-workflow />
                 {{ $t('task.title') }}
             </div>
+            
         </div>
-        <div class="px-6">
+        <div class="px-4 sm:px-6">
             <ListerTop v-if="records.length > 0" :loading="loading" @refresh="doRefresh">
                 <a-input-search
                     v-model="searchKeywords"
@@ -232,10 +309,36 @@ onUnmounted(() => {
                     class="w-48"
                     allow-clear
                 />
+                
                 <template #actions>
-                    <a-button type="outline" status="danger" @click="doClearAllRunRecords">
+                    <a-button
+                        type="outline"
+                        status="danger"
+                        :aria-label="$t('task.clearAllRunRecordsAll')"
+                        :title="$t('task.clearAllRunRecordsAll')"
+                        @click="doClearAllRunRecords"
+                    >
                         <template #icon><i-lucide-trash-2 /></template>
-                        {{ $t('task.clearAllRunRecordsAll') }}
+                    </a-button>
+                    <a-button
+                        type="secondary"
+                        data-testid="task-import"
+                        :aria-label="$t('task.import')"
+                        :title="$t('task.importTitle')"
+                        @click="doImport"
+                    >
+                        <template #icon><i-lucide-upload /></template>
+                        {{ $t('task.import') }}
+                    </a-button>
+                    <a-button
+                        type="secondary"
+                        data-testid="task-export-all"
+                        :aria-label="$t('task.exportAll')"
+                        :title="$t('task.exportAllTip')"
+                        @click="doExportAll"
+                    >
+                        <template #icon><i-lucide-download /></template>
+                        {{ $t('task.exportAll') }}
                     </a-button>
                     <a-button type="primary" @click="doAdd">
                         <template #icon><i-lucide-plus /></template>
@@ -249,11 +352,18 @@ onUnmounted(() => {
                 <div class="mb-6 flex justify-center">
                     <i-lucide-workflow class="text-6xl text-gray-300" />
                 </div>
-                <div class="text-gray-400 mb-6">{{ $t('task.noTasks') }}</div>
-                <a-button type="primary" @click="doAdd">
-                    <template #icon><i-lucide-plus /></template>
-                    {{ $t('task.add') }}
-                </a-button>
+                <div class="text-gray-400">{{ $t('task.noTasks') }}</div>
+                <div class="text-xs text-gray-400 mt-2 mb-6">{{ $t('task.importEmptyHint') }}</div>
+                <div class="flex items-center justify-center gap-2">
+                    <a-button type="primary" @click="doAdd">
+                        <template #icon><i-lucide-plus /></template>
+                        {{ $t('task.add') }}
+                    </a-button>
+                    <a-button type="outline" data-testid="task-import-empty" @click="doImport">
+                        <template #icon><i-lucide-upload /></template>
+                        {{ $t('task.importTask') }}
+                    </a-button>
+                </div>
             </div>
 
             <!-- Filter empty -->
@@ -275,6 +385,7 @@ onUnmounted(() => {
                             <div class="flex-1 min-w-0">
                                 <div class="font-medium truncate flex items-center gap-2">
                                     {{ r.name }}
+                                    
                                     <span
                                         v-if="r.run_mode === 'scheduled'"
                                         class="text-xs bg-orange-100 text-orange-600 dark:bg-orange-900 dark:text-orange-300 px-1.5 py-0.5 rounded-full inline-flex items-center gap-1 shrink-0"
@@ -282,18 +393,29 @@ onUnmounted(() => {
                                         <i-lucide-clock class="text-xs" />
                                         {{ $t('task.runModeScheduled') }}
                                     </span>
+                                    <span
+                                        v-if="Number(r.auto_repair ?? 1) === 0"
+                                        class="text-xs bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-300 px-1.5 py-0.5 rounded-full inline-flex items-center gap-1 shrink-0"
+                                    >
+                                        <i-lucide-bot class="text-xs" />
+                                        {{ $t('task.autoRepairOff') }}
+                                    </span>
                                 </div>
                                 <div v-if="r.description" class="text-xs text-gray-400 mt-0.5 truncate">
                                     {{ r.description }}
                                 </div>
                             </div>
                         </div>
-                        <div class="text-xs text-gray-400 mt-2 flex items-center gap-3">
-                            <span>{{ r.language?.toUpperCase() || 'PYTHON' }}</span>
-                            <span>{{ new Date(r.updated_at).toLocaleString() }}</span>
-                            <span v-if="r.run_mode === 'scheduled' && r.cron_expression" class="text-orange-500">
+                        <div class="text-xs text-gray-400 mt-2 flex items-center gap-3 flex-wrap">
+                            <span class="whitespace-nowrap">{{ r.language?.toUpperCase() || 'PYTHON' }}</span>
+                            <span class="whitespace-nowrap">{{ formatDateTime(r.updated_at) }}</span>
+                            <span
+                                v-if="r.run_mode === 'scheduled' && r.cron_expression"
+                                class="text-orange-500 whitespace-nowrap"
+                            >
                                 {{ r.cron_expression }}
                             </span>
+                            
                         </div>
                     </div>
                     <div
@@ -310,7 +432,7 @@ onUnmounted(() => {
                             </a-button>
                         </div>
                         <a-dropdown trigger="hover">
-                            <a-button size="mini" type="text">
+                            <a-button type="text" :aria-label="$t('common.more')">
                                 <template #icon><i-lucide-ellipsis /></template>
                             </a-button>
                             <template #content>
@@ -321,6 +443,15 @@ onUnmounted(() => {
                                 <a-doption @click="doCopy(r)">
                                     <template #icon><i-lucide-copy /></template>
                                     {{ $t('common.copy') }}
+                                </a-doption>
+                                <a-doption data-testid="task-export-item" @click="doExport(r)">
+                                    <template #icon><i-lucide-download /></template>
+                                    {{ $t('task.export') }}
+                                </a-doption>
+                                
+                                <a-doption @click="doOpenDir(r)">
+                                    <template #icon><i-lucide-folder-open /></template>
+                                    {{ $t('task.openProjectDir') }}
                                 </a-doption>
                                 <a-doption @click="doDelete(r)">
                                     <template #icon><i-lucide-trash-2 /></template>
@@ -333,9 +464,10 @@ onUnmounted(() => {
             </div>
         </div>
     </div>
-    <TaskEditorDialog ref="editorDialog" @update="loadData" />
+    <TaskEditorDialog ref="editorDialog" @update="refreshAll" />
     <TaskRunDialog ref="runDialog" />
-    <TaskRunLogDialog ref="runLogDialog" @done="loadData" />
+    <TaskRunLogDialog ref="runLogDialog" @done="refreshAll" />
+    
 </template>
 
 <style scoped lang="less">
